@@ -111,8 +111,8 @@ function getCS(scores) {
 function getCSString(scores) {
   const cs = getCS(scores);
   if (cs.length === 0) return null;
-  if (cs.length === 1) return `🧤 Clean Sheet: ${cs[0]} no recibió goles`;
-  return `🧱 Clean Sheet: ${cs[0]} y ${cs[1]} mantuvieron su arco en cero`;
+  if (cs.length === 1) return t.cs_one(cs[0]);
+  return t.cs_two(cs[0], cs[1]);
 }
 
 
@@ -178,7 +178,7 @@ function updatePlayerStats(player, teamNum) {
   const rangoAnterior = getRango(Math.max(0, stats.xp - xpGanada));
   if (rangoActual.index > rangoAnterior.index) {
     room.sendAnnouncement(
-      `🎉 ¡${player.name} subió a ${rangoActual.nombre}! (${stats.xp} XP)`,
+      t.xp_rankup(player.name, rangoActual.nombre, stats.xp),
       null, 0xf1c40f, "bold", 1
     );
   }
@@ -198,25 +198,10 @@ function updateStats() {
 }
 
 
-const GOAL_PHRASES_ASSIST = [
-  "gran pared con", "jugada armada junto a",
-  "toque preciso de", "asistencia de",
-  "combinación con",
-];
-
-const GOAL_PHRASES_SOLO = [
-  "definición con categoría", "remate preciso",
-  "gol bien trabajado", "la mandó a guardar",
-  "sin dudarlo",
-];
-
-const OWN_GOAL_PHRASES = [
-  "{} se equivocó feo",
-  "{} regaló el balón",
-  "Error grave de {}",
-  "{} quedó retratado",
-  "{} se durmió",
-];
+// Frases de gol: se obtienen del paquete de idioma (t)
+const GOAL_PHRASES_ASSIST = () => t.phrases_assist;
+const GOAL_PHRASES_SOLO   = () => t.phrases_solo;
+const OWN_GOAL_PHRASES    = () => t.phrases_og;
 
 function randomPhrase(arr) { return arr[getRandomInt(arr.length)]; }
 
@@ -232,18 +217,18 @@ function getGoalString(team) {
   }
 
   if (goalInfo[0].team !== team) {
-    const phrase = randomPhrase(OWN_GOAL_PHRASES).replace("{}", goalInfo[0].name);
+    const phrase = randomPhrase(t.phrases_og).replace("{}", goalInfo[0].name);
     game.goals.push(new Goal(scores.time, team, goalInfo[0], null));
     return `🐸 ${time} ${phrase} • ${speed}`;
   }
 
   if (goalInfo[1] && goalInfo[1].team === team) {
-    const phrase = randomPhrase(GOAL_PHRASES_ASSIST);
+    const phrase = randomPhrase(t.phrases_assist);
     game.goals.push(new Goal(scores.time, team, goalInfo[0], goalInfo[1]));
     return `⚽ ${time} ${goalInfo[0].name}, ${phrase} ${goalInfo[1].name} • ${speed}`;
   }
 
-  const phrase = randomPhrase(GOAL_PHRASES_SOLO);
+  const phrase = randomPhrase(t.phrases_solo);
   game.goals.push(new Goal(scores.time, team, goalInfo[0], null));
   return `⚽ ${time} ${goalInfo[0].name}, ${phrase} • ${speed}`;
 }
