@@ -1,5 +1,5 @@
 // =============================================================================
-//  physics.js — Física, mecánicas de juego, porteros y goles
+//  gameplay.js — Lógica de juego: toques de balón, goles, porteros, estadísticas
 // =============================================================================
 
 function calculateStadiumVariables() {
@@ -247,4 +247,3 @@ function getGoalString(team) {
   game.goals.push(new Goal(scores.time, team, goalInfo[0], null));
   return `⚽ ${time} ${goalInfo[0].name}, ${phrase} • ${speed}`;
 }
-
