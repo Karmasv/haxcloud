@@ -559,12 +559,6 @@ function xpCommand(player) {
   const progreso = next
     ? `${xp - rango.xpMin}/${next.xpMin - rango.xpMin} XP para ${next.nombre}`
     : "¡Rango máximo!";
-  announce(
-    `✨ ${player.name} — ${rango.nombre} (Nivel ${nivel})\n` +
-    `XP Total: ${xp} | ${progreso}`,
-    player.id, 0xf1c40f, "bold", 0
-  );
-}
 
 
 function getCommand(name) {
@@ -623,4 +617,3 @@ const commands = {
   setadmin:    { aliases: [],                    minRole: 4, desc: "Otorgar Admin. !setadmin #ID",                              function: setAdminCommand },
   removeadmin: { aliases: [],                    minRole: 4, desc: "Remover Admin. !removeadmin #ID",                           function: removeAdminCommand },
 };
-
