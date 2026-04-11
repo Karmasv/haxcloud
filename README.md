@@ -42,7 +42,7 @@ pm2 startup
 
 | Rol    | Nivel | Cómo se obtiene              |
 |--------|-------|------------------------------|
-| Owner  | 4     | `!claimadmin k3Rn3l.d3Ve10p3r` |
+| Owner  | 4     | `!claimadmin (aqui contraseña)` |
 | Admin  | 3     | `!setadmin #ID` (Owner)      |
 | Mod    | 2     | `!setmod #ID` (Admin+)       |
 | VIP    | 1     | `!setvip #ID` (Admin+)       |
