@@ -3,6 +3,9 @@
 // =============================================================================
 
 const CONFIG = {
+  // Token de HaxBall — obtenelo en: https://www.haxball.com/headlesstoken
+  token: "TU_TOKEN_AQUI",
+
   room: {
     name:       "💐 Liga Promeriga - Returns",
     maxPlayers: 28,
@@ -24,24 +27,19 @@ const CONFIG = {
     chat:       "https://discord.com/api/webhooks/1490447891406389371/1Ee0bIhSKy-FSP82qSLPZEPgyNvrYSlipUVJMTjNfZuxbUVEAZEJTwjPSZrF5UuA1olf",
     soporte:    "https://discord.com/api/webhooks/1490447894283813077/bEoCg9jzEF2-NHKbXccRWpQyJFYNMRv178WlFCjNkouPocN2k0eY4ybSv4AQwFpQR7yo",
   },
-  discord:     "DISCORD_LINK_AQUI",
-  // Contraseña para reclamar Owner desde el chat
+  discord:       "DISCORD_LINK_AQUI",
   claimPassword: "k3Rn3l.d3Ve10p3r",
-  // Slots a partir de los cuales se pone contraseña VIP
-  vipLockAt:   25,
-  vipPassword: "0666",
-  // Inactividad (ticks a 60/seg)
+  vipLockAt:     25,
+  vipPassword:   "0666",
   inactivityWarnAt: 800,
   inactivityKickAt: 1200,
-  // Spam
   spam: { threshold: 6, timeWindow: 1000, maxMessages: 8 },
-  // Cooldowns en ms
   cooldowns: {
-    sub:        300_000,   // 5 min
-    afk:      1_800_000,   // 30 min
-    anonMsg:    900_000,   // 15 min
-    jumpVip:  3_600_000,   // 1 hora
-    jumpMod:  1_800_000,   // 30 min
+    sub:        300_000,
+    afk:      1_800_000,
+    anonMsg:    900_000,
+    jumpVip:  3_600_000,
+    jumpMod:  1_800_000,
   },
   stats: {
     minPlayers:        8,
@@ -50,10 +48,7 @@ const CONFIG = {
   },
 };
 
-
-// Listas de usuarios
-// Roles: 4=Owner, 3=Admin, 2=Mod, 1=VIP, 0=jugador
-// Formato: [auth, nombre]
+// Listas de usuarios — Roles: 4=Owner, 3=Admin, 2=Mod, 1=VIP, 0=jugador
 let ownerList = [];
 let adminList = [];
 let modList   = [];
