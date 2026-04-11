@@ -8,18 +8,18 @@ room.onPlayerJoin = function(player) {
   // Blacklist
   const banned = blackList.some(([auth]) => auth && auth === player.auth);
   if (banned) {
-    announceAll(`🔨 ${player.name} está en la blacklist y fue baneado.`, null, "normal", 0);
-    room.kickPlayer(player.id, `Baneado permanentemente. Apelar en: ${CONFIG.discord}`, true);
+    announceAll(t.blacklist_ban(player.name), null, "normal", 0);
+    room.kickPlayer(player.id, t.blacklist_msg(CONFIG.discord), true);
     return;
   }
 
   // Banner de bienvenida
   const banner = [
-    { text: "━━━━━━━━  💐 LIGA PROMERIGA - RETURNS  ━━━━━━━━", color: 0x2d6a4f },
-    { text: "          Sala Pública Oficial de la Liga",         color: 0x40916c },
-    { text: "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", color: 0x2d6a4f },
-    { text: `👋 ¡Bienvenido, ${player.name}! Escribe '!help' para ver los comandos.`, color: null },
-    { text: `💐 Discord: ${CONFIG.discord}`, color: null },
+    { text: t.welcome_bar1(), color: 0x2d6a4f },
+    { text: t.welcome_bar2(),         color: 0x40916c },
+    { text: t.welcome_bar3(), color: 0x2d6a4f },
+    { text: t.welcome_msg(player.name), color: null },
+    { text: t.welcome_discord(CONFIG.discord), color: null },
   ];
   banner.forEach((line, i) => {
     room.sendAnnouncement(line.text, player.id, line.color, i < 3 ? "bold" : "normal", 1);
@@ -27,10 +27,10 @@ room.onPlayerJoin = function(player) {
 
   // Anuncio según rol
   const role = getRole(player);
-  if      (role === 4) { announceAll(`👑 ${player.name} (Owner) se conectó.`,    0xffefd6, "bold", 1); room.setPlayerAdmin(player.id, true); }
-  else if (role === 3) { announceAll(`🌟 ${player.name} (Admin) se conectó.`,    0xffefd6, "bold", 1); room.setPlayerAdmin(player.id, true); }
-  else if (role === 2) { announceAll(`🛡️ ${player.name} (Mod) se conectó.`,     0xffefd6, "bold", 1); room.setPlayerAdmin(player.id, true); }
-  else if (role === 1) { announceAll(`💎 ${player.name} (VIP) se conectó.`,      0xffefd6, "bold", 1); }
+  if      (role === 4) { announceAll(t.joined_owner(player.name),    0xffefd6, "bold", 1); room.setPlayerAdmin(player.id, true); }
+  else if (role === 3) { announceAll(t.joined_admin(player.name),    0xffefd6, "bold", 1); room.setPlayerAdmin(player.id, true); }
+  else if (role === 2) { announceAll(t.joined_mod(player.name),     0xffefd6, "bold", 1); room.setPlayerAdmin(player.id, true); }
+  else if (role === 1) { announceAll(t.joined_vip(player.name),      0xffefd6, "bold", 1); }
 
   // Ghost kick
   const ghosts = playersAll.filter(p => p.id !== player.id && authMap.get(p.id)?.auth === player.auth);
@@ -50,7 +50,7 @@ room.onPlayerJoin = function(player) {
   if (room.getPlayerList().length >= CONFIG.vipLockAt) {
     room.setPassword(CONFIG.vipPassword);
     roomPassword = CONFIG.vipPassword;
-    announceAll(`💎 Sala casi llena (${CONFIG.vipLockAt}/${CONFIG.room.maxPlayers}). Solo pueden entrar VIPs.`, 0xffefd6, "bold", 1);
+    announceAll(t.vip_lock(CONFIG.vipLockAt, CONFIG.room.maxPlayers), 0xffefd6, "bold", 1);
   }
 };
 
@@ -68,7 +68,7 @@ room.onPlayerLeave = function(player) {
   if (playersAll.length <= CONFIG.vipLockAt) {
     room.setPassword(null);
     roomPassword = "";
-    announceAll("✅ Sala abierta al público nuevamente.", 0xe2e2e2, "bold", 1);
+    announceAll(t.vip_unlock(), 0xe2e2e2, "bold", 1);
   }
 
   // Webhook desconexión
@@ -85,7 +85,7 @@ room.onPlayerKicked = function(player, reason, ban, byPlayer) {
   kickFetchVariable = true;
   if (ban && byPlayer && getRole(byPlayer) < 2) {
     room.clearBan(player.id);
-    announce("¡No tenés autorización para banear!", byPlayer.id, 0xed5050, "bold", 1);
+    announce(t.cmd_no_perm(), byPlayer.id, 0xed5050, "bold", 1);
     room.setPlayerAdmin(byPlayer.id, false);
     return;
   }
