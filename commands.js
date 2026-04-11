@@ -24,8 +24,8 @@ function teamChat(player, message) {
 function playerChat(player, message) {
   const parts  = message.split(/ +/);
   const target = playersAll.find(p => p.name.replaceAll(" ", "_") === parts[0].substring(2));
-  if (!target) { announce("❌ Jugador no válido", player.id, 0xed5050, "bold", 1); return; }
-  if (target.id === player.id) { announce("❌ No puedes enviarte mensajes a ti mismo.", player.id, 0xed5050, "bold", 1); return; }
+  if (!target) { announce(t.cmd_invalid_player(), player.id, 0xed5050, "bold", 1); return; }
+  if (target.id === player.id) { announce(t.cmd_no_self_msg(), player.id, 0xed5050, "bold", 1); return; }
   const body = parts.slice(1).join(" ");
   announce(`💌 [Tú → ${target.name}] ${body}`,   player.id, 0xffc933, "bold", 1);
   announce(`💌 [${player.name} → Tú] ${body}`, target.id, 0xffc933, "bold", 1);
@@ -43,14 +43,14 @@ function printRankings(stat, playerId = null) {
     .sort((a, b) => b.value - a.value);
 
   if (sorted.length < 5) {
-    if (playerId) announce("¡Aún no hay suficientes partidos registrados!", playerId, 0xed5050, "bold", 1);
+    if (playerId) announce(t.top_empty(), playerId, 0xed5050, "bold", 1);
     return;
   }
 
   const icons  = { elo: "💎", goals: "⚽", assists: "⭐", wins: "🏆", losses: "😵", cs: "🧤", playtime: "⏱️" };
   const icon   = icons[stat] ?? "💐";
-  const header = `━━━━━━━  ${icon} TOP 5  ${icon}  ━━━━━━━`;
-  const footer = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+  const header = t.top_header();
+  const footer = t.top_footer();
   const colors = [0x52b788, 0x40916c, 0x2d6a4f, 0x1b4332, 0x081c15];
 
   announce(header, playerId, 0x74c69d, "bold", 0);
@@ -94,34 +94,34 @@ function helpCommand(player, message) {
   const args = message.split(/ +/).slice(1);
   const role = getRole(player);
   if (args.length === 0) {
-    let msg = "📖 Comandos disponibles:\n";
+    let msg = t.cmd_help_intro() + "\n";
     for (const [key, cmd] of Object.entries(commands)) {
       if (cmd.desc && cmd.minRole === 0) msg += ` !${key},`;
     }
     msg = msg.slice(0, -1) + ".\n";
     if (role >= 1) {
-      let vipMsg = "💎 VIP:";
+      let vipMsg = t.cmd_help_vip();
       for (const [key, cmd] of Object.entries(commands)) {
         if (cmd.desc && cmd.minRole === 1) vipMsg += ` !${key},`;
       }
       if (!vipMsg.endsWith(":")) msg += vipMsg.slice(0, -1) + ".\n";
     }
     if (role >= 2) {
-      let modMsg = "🛡️ Mod:";
+      let modMsg = t.cmd_help_mod();
       for (const [key, cmd] of Object.entries(commands)) {
         if (cmd.desc && cmd.minRole === 2) modMsg += ` !${key},`;
       }
       if (!modMsg.endsWith(":")) msg += modMsg.slice(0, -1) + ".\n";
     }
     if (role >= 3) {
-      let adminMsg = "🌟 Admin:";
+      let adminMsg = t.cmd_help_admin();
       for (const [key, cmd] of Object.entries(commands)) {
         if (cmd.desc && cmd.minRole === 3) adminMsg += ` !${key},`;
       }
       if (!adminMsg.endsWith(":")) msg += adminMsg.slice(0, -1) + ".\n";
     }
     if (role >= 4) {
-      let ownerMsg = "👑 Owner:";
+      let ownerMsg = t.cmd_help_owner();
       for (const [key, cmd] of Object.entries(commands)) {
         if (cmd.desc && cmd.minRole === 4) ownerMsg += ` !${key},`;
       }
@@ -152,7 +152,7 @@ function showStatsCommand(player) {
   const auth  = getAuth(player);
   const stats = getStats(auth);
   const score = getPlayerScore(stats);
-  announceAll(`🏆 ${player.name} comparte sus stats:`, 0x52b788, "bold", 0);
+  announceAll(t.stats_share(player.name), 0x52b788, "bold", 0);
   announceAll(
     `📋 Partidos: ${stats.games} | 🏆 ${stats.wins}W 😵 ${stats.losses}L | 📊 ${stats.winrate}\n` +
     `⚽ ${stats.goals}G ⭐ ${stats.assists}A 🧤 ${stats.CS}CS | 💎 Score: ${score} | ⏱️ ${formatTimeLong(stats.playtime)}`,
@@ -163,15 +163,15 @@ function showStatsCommand(player) {
 function resetStatsCommand(player) {
   const auth = getAuth(player);
   localStorage.removeItem(auth);
-  announce("✅ Tus estadísticas fueron reseteadas.", player.id, 0xffefd6, "bold", 1);
+  announce(t.stats_reset(), player.id, 0xffefd6, "bold", 1);
 }
 
 function afkCommand(player) {
-  if (player.team === 0) { announce("¡Ya sos espectador!", player.id, 0xed5050, "bold", 1); return; }
-  if (AFKSet.has(player.id)) { announce("¡Ya estás AFK!", player.id, 0xed5050, "bold", 1); return; }
+  if (player.team === 0) { announce(t.afk_already_spec(), player.id, 0xed5050, "bold", 1); return; }
+  if (AFKSet.has(player.id)) { announce(t.afk_already_afk(), player.id, 0xed5050, "bold", 1); return; }
   AFKSet.add(player.id);
   room.setPlayerTeam(player.id, 0);
-  announceAll(`😴 ${player.name} se fue AFK.`, 0xffefd6, "bold", 1);
+  announceAll(t.afk_gone(player.name), 0xffefd6, "bold", 1);
   updateTeams();
   handlePlayersLeave();
 }
@@ -180,14 +180,14 @@ function subCommand(player) {
   const now    = Date.now();
   const scores = room.getScores();
   if (scores && ((player.team === 1 && scores.red < scores.blue) || (player.team === 2 && scores.blue < scores.red))) {
-    announce("¡No puedes irte AFK mientras tu equipo va perdiendo!", player.id, 0xed5050, "bold", 1);
+    announce(t.afk_cant_losing(), player.id, 0xed5050, "bold", 1);
     return;
   }
   if (AFKSet.has(player.id)) {
     if (AFKMinSet.has(player.id)) { announce("⏱️ Debes esperar antes de usar !sub de nuevo.", player.id, 0xffa135, "bold", 1); }
     else {
       AFKSet.delete(player.id);
-      announceAll(`✅ ${player.name} volvió.`, 0xffefd6, "normal", 1);
+      announceAll(t.afk_back(player.name), 0xffefd6, "normal", 1);
       updateTeams(); handlePlayersJoin();
     }
     return;
@@ -195,7 +195,7 @@ function subCommand(player) {
   if (afkCooldownTimes.has(player.id)) {
     const remaining = (CONFIG.cooldowns.sub - (now - afkCooldownTimes.get(player.id))) / 1000;
     if (remaining > 0) {
-      announce(`⏱️ Cooldown: ${Math.floor(remaining/60)}m ${Math.floor(remaining%60)}s`, player.id, 0xffa135, "bold", 1);
+      announce(t.afk_cooldown(Math.floor(remaining/60), Math.floor(remaining%60)), player.id, 0xffa135, "bold", 1);
       return;
     }
   }
@@ -208,19 +208,17 @@ function subCommand(player) {
     setTimeout(() => afkCooldownTimes.delete(player.id), CONFIG.cooldowns.sub);
   }
   room.setPlayerTeam(player.id, 0);
-  announceAll(`😴 ${player.name} se fue AFK.`, 0xffefd6, "bold", 1);
+  announceAll(t.afk_gone(player.name), 0xffefd6, "bold", 1);
   updateTeams(); handlePlayersLeave();
 }
 
 function afkListCommand(player) {
-  if (AFKSet.size === 0) { announce("😴 No hay nadie AFK.", player.id, 0xffefd6, "bold", null); return; }
-  let msg = "😴 AFK: ";
-  AFKSet.forEach(id => { const p = room.getPlayer(id); if (p) msg += p.name + ", "; });
-  announce(msg.slice(0, -2) + ".", player.id, 0xffefd6, "bold", null);
+  if (AFKSet.size === 0) { announce(t.afk_list_empty(), player.id, 0xffefd6, "bold", null); return; }
+  let afkNames = []; AFKSet.forEach(id => { const p = room.getPlayer(id); if (p) afkNames.push(p.name); }); announce(t.afk_list(afkNames.join(", ")), player.id, 0xffefd6, "bold", null);
 }
 
 function leaveCommand(player) {
-  room.kickPlayer(player.id, "👋 ¡Hasta luego!", false);
+  room.kickPlayer(player.id, t.leave_msg(), false);
 }
 
 function avatarCommand(player) {
@@ -228,34 +226,34 @@ function avatarCommand(player) {
     avatarEnabled.delete(player.id);
     prevPositions.delete(player.id);
     room.setPlayerAvatar(player.id, null);
-    announce("🔃 Indicadores de movimiento desactivados.", player.id, 0xffefd6, "bold", 1);
+    announce(t.avatar_off(), player.id, 0xffefd6, "bold", 1);
   } else {
     avatarEnabled.add(player.id);
     const disc = room.getPlayerDiscProperties(player.id);
     if (disc) prevPositions.set(player.id, { x: disc.x, y: disc.y });
-    announce("🔃 Indicadores de movimiento activados.", player.id, 0xffefd6, "bold", 1);
+    announce(t.avatar_on(), player.id, 0xffefd6, "bold", 1);
   }
 }
 
 function discordCommand(player) {
-  announce("💐 LIGA PROMERIGA - RETURNS", player.id, 0x2d6a4f, "bold",   0);
-  announce("Servidor oficial de Discord:",  player.id, 0x52b788, "normal", 0);
+  announce(t.discord_title(), player.id, 0x2d6a4f, "bold",   0);
+  announce(t.discord_subtitle(),  player.id, 0x52b788, "normal", 0);
   announce(CONFIG.discord,                  player.id, 0x52b788, "bold",   0);
 }
 
 function jumpCommand(player) {
   if (gameState !== 0 || playSituation !== 2) {
-    announce("¡Solo podés saltar durante un partido activo!", player.id, 0xed5050, "bold", 1);
+    announce(t.jump_game_only(), player.id, 0xed5050, "bold", 1);
     return;
   }
   if (player.team !== 0) {
-    announce("¡Debes ser espectador para saltar la fila!", player.id, 0xed5050, "bold", 1);
+    announce(t.jump_spec_only(), player.id, 0xed5050, "bold", 1);
     return;
   }
   const auth   = getAuth(player);
   const role   = getRole(player);
   if (role < 1) {
-    announce("💎 Comando exclusivo para VIP y superiores.", player.id, 0xe2e2e2, "bold", 1);
+    announce(t.jump_vip_only(), player.id, 0xe2e2e2, "bold", 1);
     return;
   }
   const now      = Date.now();
@@ -263,14 +261,14 @@ function jumpCommand(player) {
   if (jumpCooldowns.has(auth)) {
     const remaining = (jumpCooldowns.get(auth) + cooldown - now) / 1000;
     if (remaining > 0) {
-      announce(`⏱️ Cooldown: ${Math.floor(remaining/60)}m ${Math.floor(remaining%60)}s`, player.id, 0xffa135, "bold", 1);
+      announce(t.afk_cooldown(Math.floor(remaining/60), Math.floor(remaining%60)), player.id, 0xffa135, "bold", 1);
       return;
     }
   }
   const specs = room.getPlayerList().filter(p => p.team === 0 && p.id !== player.id);
   room.reorderPlayers([player.id, ...specs.map(p => p.id)], true);
   jumpCooldowns.set(auth, now);
-  announceAll(`💎 ¡${player.name} pasó al primer lugar de la fila!`, 0xffefd6, "bold", 1);
+  announceAll(t.jump_done(player.name), 0xffefd6, "bold", 1);
 }
 
 function anonCommand(player, message) {
@@ -278,24 +276,24 @@ function anonCommand(player, message) {
   if (anonCooldownTimes.has(player.id)) {
     const remaining = (CONFIG.cooldowns.anonMsg - (now - anonCooldownTimes.get(player.id))) / 1000;
     if (remaining > 0) {
-      announce(`⏱️ Cooldown: ${Math.floor(remaining/60)}m ${Math.floor(remaining%60)}s`, player.id, 0xffa135, "bold", 1);
+      announce(t.afk_cooldown(Math.floor(remaining/60), Math.floor(remaining%60)), player.id, 0xffa135, "bold", 1);
       return;
     }
   }
   const text = message.split(/ +/).slice(1).join(" ");
-  if (!text) { announce("❌ Escribe un mensaje después de !anon.", player.id, 0xed5050, "bold", 1); return; }
+  if (!text) { announce(t.anon_empty(), player.id, 0xed5050, "bold", 1); return; }
   anonCooldownTimes.set(player.id, now);
   setTimeout(() => anonCooldownTimes.delete(player.id), CONFIG.cooldowns.anonMsg);
-  announceAll(`👻 Anónimo: ${text}`, 0xe2e2e2, "normal", 0);
+  announceAll(t.anon_msg(text), 0xe2e2e2, "normal", 0);
 }
 
 function votekickCommand(player, message) {
-  if (voteKickData.active) { announce("¡Ya hay una votación activa!", player.id, 0xed5050, "bold", 1); return; }
+  if (voteKickData.active) { announce(t.vote_active(), player.id, 0xed5050, "bold", 1); return; }
   const idStr = message.split(/ +/)[1];
-  if (!idStr?.startsWith("#")) { announce("❌ Uso: !votekick #ID", player.id, 0xed5050, "bold", 1); return; }
+  if (!idStr?.startsWith("#")) { announce(t.vote_usage(), player.id, 0xed5050, "bold", 1); return; }
   const target = room.getPlayer(parseInt(idStr.slice(1)));
-  if (!target || target.id === player.id) { announce("¡Jugador inválido!", player.id, 0xed5050, "bold", 1); return; }
-  if (getRole(target) >= 2) { announce("¡No podés votar para expulsar a un Mod o superior!", player.id, 0xed5050, "bold", 1); return; }
+  if (!target || target.id === player.id) { announce(t.vote_invalid(), player.id, 0xed5050, "bold", 1); return; }
+  if (getRole(target) >= 2) { announce(t.vote_no_mod(), player.id, 0xed5050, "bold", 1); return; }
   voteKickData.active        = true;
   voteKickData.target        = target;
   voteKickData.initiator     = player;
@@ -307,14 +305,14 @@ function votekickCommand(player, message) {
     0xffa135, "bold", 1
   );
   voteKickData.timeout = setTimeout(() => {
-    announceAll(`🗳️ Votación para expulsar a ${voteKickData.target?.name} expiró.`, 0xe2e2e2, "normal", 0);
+    announceAll(t.vote_expired(voteKickData.target?.name), 0xe2e2e2, "normal", 0);
     voteKickData.active = false; voteKickData.target = null;
   }, 60_000);
 }
 
 function voteCommand(player) {
-  if (!voteKickData.active) { announce("¡No hay ninguna votación activa!", player.id, 0xed5050, "bold", 1); return; }
-  if (voteKickData.voters.has(player.id)) { announce("¡Ya votaste!", player.id, 0xed5050, "bold", 1); return; }
+  if (!voteKickData.active) { announce(t.vote_no_active(), player.id, 0xed5050, "bold", 1); return; }
+  if (voteKickData.voters.has(player.id)) { announce(t.vote_already(), player.id, 0xed5050, "bold", 1); return; }
   voteKickData.votes++;
   voteKickData.voters.add(player.id);
   if (voteKickData.votes >= voteKickData.requiredVotes) {
@@ -323,56 +321,56 @@ function voteCommand(player) {
     announceAll(`✅ ${voteKickData.target.name} fue expulsado por votación.`, 0xffefd6, "bold", 1);
     voteKickData.active = false; voteKickData.target = null;
   } else {
-    announceAll(`🗳️ ${player.name} votó. (${voteKickData.votes}/${voteKickData.requiredVotes})`, 0xffa135, "normal", 0);
+    announceAll(t.vote_progress(player.name, voteKickData.votes, voteKickData.requiredVotes), 0xffa135, "normal", 0);
   }
 }
 
 function callAdminCommand(player, message) {
   const motivo = message.split(/ +/).slice(1).join(" ") || "llamada de admin";
-  announceAll(`🆘 ${player.name} necesita un administrador.`, 0xed5050, "bold", 1);
+  announceAll(t.calladmin_msg(player.name), 0xed5050, "bold", 1);
   webhookSoporte(player, motivo);
 }
 
 function renameCommand(player, message) {
   const auth    = getAuth(player);
   const newName = message.split(/ +/).slice(1).join(" ");
-  if (!newName) { announce("❌ Escribe el nuevo nombre después del comando.", player.id, 0xed5050, "bold", 1); return; }
+  if (!newName) { announce(t.rename_empty(), player.id, 0xed5050, "bold", 1); return; }
   const stats = getStats(auth);
   stats.playerName = newName;
   saveStats(auth, stats);
-  announce(`✅ Nombre en estadísticas cambiado a: ${newName}`, player.id, 0xffefd6, "bold", 1);
+  announce(t.rename_done(newName), player.id, 0xffefd6, "bold", 1);
 }
 
 
 function claimAdminCommand(player, message) {
   const args = message.split(/ +/).slice(1);
   if (args[0] !== CONFIG.claimPassword) {
-    announce("❌ Contraseña incorrecta.", player.id, 0xed5050, "bold", 1);
+    announce(t.owner_wrong(), player.id, 0xed5050, "bold", 1);
     return;
   }
   const auth = getAuth(player);
   if (ownerList.some(o => o[0] === auth)) {
     // Ya es owner, simplemente reactivar admin de sala
     room.setPlayerAdmin(player.id, true);
-    announce("✅ Admin de sala reactivado.", player.id, 0xffefd6, "bold", 1);
+    announce(t.owner_relogin(), player.id, 0xffefd6, "bold", 1);
     return;
   }
   ownerList.push([auth, player.name]);
   room.setPlayerAdmin(player.id, true);
-  announceAll(`👑 ${player.name} es ahora Owner de la sala.`, 0xffefd6, "bold", 1);
+  announceAll(t.owner_claimed(player.name), 0xffefd6, "bold", 1);
 }
 
 function muteCommand(player, message) {
   const args = message.split(/ +/).slice(1);
-  if (!args[0]?.startsWith("#")) { announce("❌ Uso: !mute #ID [minutos]", player.id, 0xed5050, "bold", 1); return; }
+  if (!args[0]?.startsWith("#")) { announce(t.mute_usage(), player.id, 0xed5050, "bold", 1); return; }
   const target = room.getPlayer(parseInt(args[0].slice(1)));
-  if (!target) { announce("¡Jugador no encontrado!", player.id, 0xed5050, "bold", 1); return; }
-  if (getRole(target) >= getRole(player)) { announce("¡No podés mutear a alguien de tu rango o superior!", player.id, 0xed5050, "bold", 1); return; }
-  if (muteArray.getByPlayerId(target.id)) { announce("¡El jugador ya está muteado!", player.id, 0xed5050, "bold", 1); return; }
+  if (!target) { announce(t.cmd_not_found(), player.id, 0xed5050, "bold", 1); return; }
+  if (getRole(target) >= getRole(player)) { announce(t.mute_rank(), player.id, 0xed5050, "bold", 1); return; }
+  if (muteArray.getByPlayerId(target.id)) { announce(t.mute_already(), player.id, 0xed5050, "bold", 1); return; }
   const minutes = parseInt(args[1]) || 5;
   const mp      = new MutePlayer(target.name, target.id, getAuth(target));
   mp.setDuration(minutes);
-  announceAll(`🔇 ${target.name} fue muteado por ${minutes} minutos.`, 0xffefd6, "bold", 1);
+  announceAll(t.mute_done(target.name, minutes), 0xffefd6, "bold", 1);
 }
 
 function unmuteCommand(player, message) {
@@ -381,27 +379,25 @@ function unmuteCommand(player, message) {
   const mp = arg.startsWith("#")
     ? muteArray.getByPlayerId(parseInt(arg.slice(1)))
     : muteArray.getById(parseInt(arg));
-  if (!mp) { announce("¡Jugador no encontrado en la lista de muteados!", player.id, 0xed5050, "bold", 1); return; }
+  if (!mp) { announce(t.unmute_notfound(), player.id, 0xed5050, "bold", 1); return; }
   mp.remove();
-  announceAll(`🔊 ${mp.name} fue desmuteado.`, 0xffefd6, "bold", 1);
+  announceAll(t.unmute_done(mp.name), 0xffefd6, "bold", 1);
 }
 
 function muteListCommand(player) {
-  if (muteArray.list.length === 0) { announce("🔇 No hay nadie muteado.", player.id, 0xffefd6, "bold", null); return; }
-  let msg = "🔇 Muteados: ";
-  for (const mp of muteArray.list) msg += `${mp.name}[${mp.id}], `;
-  announce(msg.slice(0, -2) + ".", player.id, 0xffefd6, "bold", null);
+  if (muteArray.list.length === 0) { announce(t.mute_empty(), player.id, 0xffefd6, "bold", null); return; }
+  const muteNames = muteArray.list.map(mp => `${mp.name}[${mp.id}]`).join(", "); announce(t.mute_list(muteNames), player.id, 0xffefd6, "bold", null);
 }
 
 function setVipCommand(player, message) {
   const arg    = message.split(/ +/)[1];
   if (!arg?.startsWith("#")) { announce("❌ Uso: !setvip #ID", player.id, 0xed5050, "bold", 1); return; }
   const target = room.getPlayer(parseInt(arg.slice(1)));
-  if (!target) { announce("¡Jugador no encontrado!", player.id, 0xed5050, "bold", 1); return; }
+  if (!target) { announce(t.cmd_not_found(), player.id, 0xed5050, "bold", 1); return; }
   const auth = getAuth(target);
-  if (vipList.some(v => v[0] === auth)) { announce("¡El jugador ya es VIP!", player.id, 0xed5050, "bold", 1); return; }
+  if (vipList.some(v => v[0] === auth)) { announce(t.setvip_already(), player.id, 0xed5050, "bold", 1); return; }
   vipList.push([auth, target.name]);
-  announceAll(`💎 ¡${target.name} ahora es VIP de Liga Promeriga!`, 0xffefd6, "bold", 1);
+  announceAll(t.setvip_done(target.name), 0xffefd6, "bold", 1);
 }
 
 function removeVipCommand(player, message) {
@@ -414,63 +410,61 @@ function removeVipCommand(player, message) {
   } else {
     idx = parseInt(arg);
   }
-  if (idx < 0 || idx >= vipList.length) { announce("¡VIP no encontrado!", player.id, 0xed5050, "bold", 1); return; }
+  if (idx < 0 || idx >= vipList.length) { announce(t.removevip_nf(), player.id, 0xed5050, "bold", 1); return; }
   const name = vipList[idx][1];
   vipList.splice(idx, 1);
-  announceAll(`💎 ${name} ya no es VIP.`, 0xffefd6, "bold", 1);
+  announceAll(t.removevip_done(name), 0xffefd6, "bold", 1);
 }
 
 function vipListCommand(player) {
-  if (vipList.length === 0) { announce("💎 No hay jugadores VIP.", player.id, 0xffefd6, "bold", null); return; }
-  let msg = "💎 VIPs: ";
-  vipList.forEach((v, i) => msg += `${v[1]}[${i}], `);
-  announce(msg.slice(0, -2) + ".", player.id, 0xffefd6, "bold", null);
+  if (vipList.length === 0) { announce(t.vip_empty(), player.id, 0xffefd6, "bold", null); return; }
+  const vipNames = vipList.map((v,i) => `${v[1]}[${i}]`).join(", "); announce(t.vip_list(vipNames), player.id, 0xffefd6, "bold", null);
 }
 
 function setModCommand(player, message) {
   const arg    = message.split(/ +/)[1];
   if (!arg?.startsWith("#")) { announce("❌ Uso: !setmod #ID", player.id, 0xed5050, "bold", 1); return; }
   const target = room.getPlayer(parseInt(arg.slice(1)));
-  if (!target) { announce("¡Jugador no encontrado!", player.id, 0xed5050, "bold", 1); return; }
+  if (!target) { announce(t.cmd_not_found(), player.id, 0xed5050, "bold", 1); return; }
   const auth = getAuth(target);
-  if (modList.some(m => m[0] === auth)) { announce("¡El jugador ya es Mod!", player.id, 0xed5050, "bold", 1); return; }
+  if (modList.some(m => m[0] === auth)) { announce(t.setmod_already(), player.id, 0xed5050, "bold", 1); return; }
   modList.push([auth, target.name]);
   room.setPlayerAdmin(target.id, true);
-  announceAll(`🛡️ ${target.name} ahora es Moderador.`, 0xffefd6, "bold", 1);
+  announceAll(t.setmod_done(target.name), 0xffefd6, "bold", 1);
 }
 
 function removeModCommand(player, message) {
   const arg    = message.split(/ +/)[1];
   if (!arg?.startsWith("#")) { announce("❌ Uso: !removemod #ID", player.id, 0xed5050, "bold", 1); return; }
   const target = room.getPlayer(parseInt(arg.slice(1)));
-  if (!target) { announce("¡Jugador no encontrado!", player.id, 0xed5050, "bold", 1); return; }
+  if (!target) { announce(t.cmd_not_found(), player.id, 0xed5050, "bold", 1); return; }
   const auth = getAuth(target);
   modList = modList.filter(m => m[0] !== auth);
   room.setPlayerAdmin(target.id, false);
-  announceAll(`🛡️ ${target.name} ya no es Moderador.`, 0xffefd6, "bold", 1);
+  announceAll(t.removemod_done(target.name), 0xffefd6, "bold", 1);
 }
 
 function setAdminCommand(player, message) {
   const arg    = message.split(/ +/)[1];
   if (!arg?.startsWith("#")) { announce("❌ Uso: !setadmin #ID", player.id, 0xed5050, "bold", 1); return; }
   const target = room.getPlayer(parseInt(arg.slice(1)));
-  if (!target) { announce("¡Jugador no encontrado!", player.id, 0xed5050, "bold", 1); return; }
+  if (!target) { announce(t.cmd_not_found(), player.id, 0xed5050, "bold", 1); return; }
   const auth = getAuth(target);
-  if (adminList.some(a => a[0] === auth)) { announce("¡El jugador ya es Admin!", player.id, 0xed5050, "bold", 1); return; }
+  if (adminList.some(a => a[0] === auth)) { announce(t.setadmin_already(), player.id, 0xed5050, "bold", 1); return; }
   adminList.push([auth, target.name]);
   room.setPlayerAdmin(target.id, true);
-  announceAll(`🌟 ${target.name} ahora es Administrador.`, 0xffefd6, "bold", 1);
+  announceAll(t.setadmin_done(target.name), 0xffefd6, "bold", 1);
 }
 
 function removeAdminCommand(player, message) {
   const arg    = message.split(/ +/)[1];
   if (!arg?.startsWith("#")) { announce("❌ Uso: !removeadmin #ID", player.id, 0xed5050, "bold", 1); return; }
   const target = room.getPlayer(parseInt(arg.slice(1)));
-  if (!target) { announce("¡Jugador no encontrado!", player.id, 0xed5050, "bold", 1); return; }
+  if (!target) { announce(t.cmd_not_found(), player.id, 0xed5050, "bold", 1); return; }
   const auth = getAuth(target);
   adminList = adminList.filter(a => a[0] !== auth);
   room.setPlayerAdmin(target.id, false);
-  announceAll(`🌟 ${target.name} ya no es Administrador.`, 0xffefd6, "bold", 1);
+  announceAll(t.removeadmin_done(target.name), 0xffefd6, "bold", 1);
 }
 
 function adminListCommand(player) {
@@ -478,7 +472,7 @@ function adminListCommand(player) {
   if (ownerList.length)  lines.push("👑 Owners: "  + ownerList.map(o => o[1]).join(", "));
   if (adminList.length)  lines.push("🌟 Admins: "  + adminList.map(a => a[1]).join(", "));
   if (modList.length)    lines.push("🛡️ Mods: "    + modList.map(m => m[1]).join(", "));
-  if (lines.length === 0) { announce("No hay staff registrado.", player.id, 0xffefd6, "bold", null); return; }
+  if (lines.length === 0) { announce(t.admin_none(), player.id, 0xffefd6, "bold", null); return; }
   announce(lines.join("\n"), player.id, 0xffefd6, "bold", null);
 }
 
@@ -490,26 +484,24 @@ function clearbansCommand(player, message) {
     announceAll("✅ Todos los baneos removidos.", 0xffefd6, "bold", null);
   } else {
     const idx = parseInt(arg);
-    if (isNaN(idx) || idx < 0 || idx >= banList.length) { announce("¡Número inválido!", player.id, 0xed5050, "bold", 1); return; }
+    if (isNaN(idx) || idx < 0 || idx >= banList.length) { announce(t.clearbans_inv(), player.id, 0xed5050, "bold", 1); return; }
     room.clearBan(banList[idx][1]);
     const name = banList[idx][0];
     banList.splice(idx, 1);
-    announceAll(`✅ ${name} fue desbaneado.`, 0xffefd6, "bold", null);
+    announceAll(t.clearbans_one(name), 0xffefd6, "bold", null);
   }
 }
 
 function banListCommand(player) {
-  if (banList.length === 0) { announce("🔨 No hay nadie baneado.", player.id, 0xffefd6, "bold", null); return; }
-  let msg = "🔨 Baneados: ";
-  banList.forEach((b, i) => msg += `${b[0]}[${i}], `);
-  announce(msg.slice(0, -2) + ".", player.id, 0xffefd6, "bold", null);
+  if (banList.length === 0) { announce(t.bans_empty(), player.id, 0xffefd6, "bold", null); return; }
+  const banNames = banList.map((b,i) => `${b[0]}[${i}]`).join(", "); announce(t.bans_list(banNames), player.id, 0xffefd6, "bold", null);
 }
 
 function passwordCommand(player, message) {
   const pwd = message.split(/ +/).slice(1).join(" ");
   roomPassword = pwd;
   room.setPassword(pwd || null);
-  announce(pwd ? `🔑 Contraseña: ${pwd}` : "🔑 Contraseña removida.", player.id, 0xffefd6, "bold", 1);
+  announce(pwd ? t.password_set(pwd) : t.password_rm(), player.id, 0xffefd6, "bold", 1);
 }
 
 function restartCommand() {
@@ -528,7 +520,7 @@ function swapCommand() {
 function slowmodeCommand(player, message) {
   const n = parseInt(message.split(/ +/)[1]) || 0;
   slowMode = n;
-  announceAll(`🐢 Modo lento: ${n} segundos`, 0xffefd6, "bold", 1);
+  announceAll(t.slowmode_msg(n), 0xffefd6, "bold", 1);
 }
 
 
@@ -540,11 +532,10 @@ function xpCommand(player) {
   const nivel = getNivel(xp);
   const next  = RANGOS[rango.index + 1];
   const progreso = next
-    ? `${xp - rango.xpMin}/${next.xpMin - rango.xpMin} XP para ${next.nombre}`
-    : "¡Rango máximo!";
+    ? t.xp_progress(xp - rango.xpMin, next.xpMin - rango.xpMin, next.nombre)
+    : t.xp_max();
   announce(
-    `✨ ${player.name} — ${rango.nombre} (Nivel ${nivel})\n` +
-    `XP Total: ${xp} | ${progreso}`,
+    t.xp_line1(player.name, rango.nombre, nivel) + "\n" + t.xp_line2(xp, progreso),
     player.id, 0xf1c40f, "bold", 0
   );
 }
@@ -557,8 +548,8 @@ function xpCommand(player) {
   const nivel = getNivel(xp);
   const next  = RANGOS[rango.index + 1];
   const progreso = next
-    ? `${xp - rango.xpMin}/${next.xpMin - rango.xpMin} XP para ${next.nombre}`
-    : "¡Rango máximo!";
+    ? t.xp_progress(xp - rango.xpMin, next.xpMin - rango.xpMin, next.nombre)
+    : t.xp_max();
 
 
 function getCommand(name) {
