@@ -10,7 +10,7 @@
 //    4. utils     — funciones de utilidad puras
 //    5. roles     — getRole, getAuth, etc.
 //    6. stats     — localStorage, XP, rangos
-//    7. physics   — física, toques, goles, porteros
+//    7. gameplay  — lógica de juego: toques, goles, porteros, stats
 //    8. teams     — lineups, balance, choose mode
 //    9. game      — tiempo, golden goal, avatares, actividad
 //   10. webhooks  — todos los webhooks de Discord
@@ -30,7 +30,7 @@ loadModule('./state.js');
 loadModule('./utils.js');
 loadModule('./roles.js');
 loadModule('./stats.js');
-loadModule('./physics.js');
+loadModule('./gameplay.js');
 loadModule('./teams.js');
 loadModule('./game.js');
 loadModule('./webhooks.js');
