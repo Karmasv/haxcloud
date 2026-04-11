@@ -164,7 +164,7 @@ function resumeGame() {
 function activateChooseMode() {
   chooseMode = true;
   slowMode   = 3;
-  announceAll("🐢 Modo lento: 3 segundos", 0xffefd6, "bold", 1);
+  announceAll(t.slowmode_msg(3), 0xffefd6, "bold", 1);
 }
 
 function deactivateChooseMode() {
@@ -174,13 +174,13 @@ function deactivateChooseMode() {
   clearTimeout(timeOutCap);
   if (slowMode !== 0) {
     slowMode = 0;
-    announceAll("🐢 Modo lento: desactivado", 0xffefd6, "bold", 1);
+    announceAll(t.slowmode_off(), 0xffefd6, "bold", 1);
   }
 }
 
 function getSpecList(captain) {
   if (!captain) return;
-  let msg = "📃 Fila: ";
+  let msg = t.choose_list("").replace("", ""); msg = "";
   teamSpec.forEach((p, i) => msg += `${p.name}[${i+1}], `);
   room.sendAnnouncement(msg.slice(0, -2) + ".", captain.id, 0xe2e2e2, "bold", 1);
 }
@@ -190,13 +190,13 @@ function choosePlayer() {
   const captain = teamRed.length <= teamBlue.length ? teamRed[0] : teamBlue[0];
   if (!captain) return;
   room.sendAnnouncement(
-    "📖 Elegí un jugador por número, 'top', 'random' o 'bottom'",
+    t.choose_pick(),
     captain.id, 0xe2e2e2, "bold", 2
   );
   timeOutCap = setTimeout(cap => {
-    room.sendAnnouncement("⏱️ ¡10 segundos para elegir!", cap.id, 0xffa135, "bold", 2);
+    room.sendAnnouncement(t.choose_10s(), cap.id, 0xffa135, "bold", 2);
     timeOutCap = setTimeout(c => {
-      room.kickPlayer(c.id, "No elegiste a tiempo.", false);
+      room.kickPlayer(c.id, t.choose_timeout(), false);
     }, 10_000, cap);
   }, 20_000, captain);
   if (teamRed.length && teamBlue.length) getSpecList(captain);
@@ -217,7 +217,7 @@ function chooseModeFunction(player, message) {
   else {
     const n = parseInt(cmd);
     if (isNaN(n) || n < 1 || n > teamSpec.length) {
-      room.sendAnnouncement("¡Número inválido!", player.id, 0xed5050, "bold", 1);
+      room.sendAnnouncement(t.choose_invalid(), player.id, 0xed5050, "bold", 1);
       return false;
     }
     targetPlayer = teamSpec[n - 1];
@@ -226,7 +226,7 @@ function chooseModeFunction(player, message) {
   if (targetPlayer) {
     clearTimeout(timeOutCap);
     room.setPlayerTeam(targetPlayer.id, targetTeam);
-    announceAll(`✅ ${player.name} eligió a ${targetPlayer.name}`, 0xffefd6, "bold", 1);
+    announceAll(t.choose_done(player.name, targetPlayer.name), 0xffefd6, "bold", 1);
   }
   return true;
 }
@@ -316,7 +316,7 @@ function handlePlayersLeave() {
       const blueUp = teamBlue.length < teamRed.length  && s.red  - s.blue === 2;
       if (redUp || blueUp) {
         endGame(redUp ? 2 : 1);
-        announceAll("🤡 Ragequit detectado, partido finalizado.", 0xe2e2e2, "bold", 2);
+        announceAll(t.ragequit(), 0xe2e2e2, "bold", 2);
         stopTimeout = setTimeout(() => room.stopGame(), 100);
         return;
       }
@@ -456,4 +456,3 @@ function handlePlayersStop(byPlayer) {
     startTimeout = setTimeout(() => room.startGame(), 2000);
   }
 }
-
