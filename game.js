@@ -36,7 +36,7 @@ function handleActivityPlayer(player) {
   comp.inactivityTicks++;
   if (comp.inactivityTicks === CONFIG.inactivityWarnAt) {
     room.sendAnnouncement(
-      `⚠️ ${player.name}, si no te movés en los próximos segundos serás expulsado por inactividad.`,
+      t.inactivity_warn(player.name),
       player.id, 0xffa135, "bold", 2
     );
     return;
@@ -46,7 +46,7 @@ function handleActivityPlayer(player) {
     if (game.scores?.time <= 19.5) {
       setTimeout(() => { chooseMode ? room.stopGame() : instantRestart(); }, 10);
     }
-    room.kickPlayer(player.id, "Expulsado por inactividad", false);
+    room.kickPlayer(player.id, t.inactivity_kick(), false);
   }
 }
 
@@ -86,7 +86,7 @@ function checkTime() {
       return;
     }
     goldenGoal = true;
-    announceAll("⚡ ¡GOLDEN GOAL! El próximo gol decide el partido.", 0xffefd6, "bold", 1);
+    announceAll(t.golden_goal(), 0xffefd6, "bold", 1);
   }
 
   if (Math.abs(s.time - 600 - s.timeLimit) <= 0.01 && !checkTimeVariable) {
@@ -112,18 +112,17 @@ function endGame(winner) {
 
   if (winner === 1 || winner === 2) {
     streak = winner === 1 ? streak + 1 : 1;
-    announceAll("━━━━━━━━━  💐 LIGA PROMERIGA  ━━━━━━━━━",          0x2d6a4f, "bold",   2);
-    announceAll(`⚽ Resultado: 🔴 ${scores.red} - ${scores.blue} 🔵`, 0x52b788, "bold",   2);
-    announceAll(`📊 Posesión: 🔴 ${redPoss}% | 🔵 ${bluePoss}%`,     0x74c69d, "normal", 2);
-    announceAll(`📍 Zona:     🔴 ${redZone}% | 🔵 ${blueZone}%`,     0x74c69d, "normal", 2);
-    if (streak > 1) announceAll(`🔥 Racha: ${streak} partidas seguidas`, 0x3b82f6, "italic", 2);
+    announceAll(t.result_bar1(),          0x2d6a4f, "bold",   2);
+    announceAll(t.result_score(scores.red, scores.blue), 0x52b788, "bold",   2);
+    announceAll(t.result_poss(redPoss, bluePoss),     0x74c69d, "normal", 2);
+    announceAll(t.result_zone(redZone, blueZone),     0x74c69d, "normal", 2);
+    if (streak > 1) announceAll(t.result_streak(streak), 0x3b82f6, "italic", 2);
     const csStr = getCSString(scores);
     if (csStr) announceAll(csStr, 0xede37d, "normal", 2);
   } else {
     streak = 0;
-    announceAll("⏱️ Tiempo agotado — empate", 0x9ca3af, "bold", 2);
+    announceAll(t.result_draw(), 0x9ca3af, "bold", 2);
   }
 
   updateStats();
 }
-
