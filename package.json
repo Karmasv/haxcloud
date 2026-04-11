@@ -1,5 +1,16 @@
 {
+  "name": "liga-promeriga-returns",
+  "version": "1.0.0",
+  "description": "Sala pública oficial de Liga Promeriga - Returns",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "pm2": "pm2 start index.js --name liga-promeriga"
+  },
   "dependencies": {
-    "haxball.js": "^4.0.3"
+    "haxball.js": "latest"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
