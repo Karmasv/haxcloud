@@ -73,7 +73,7 @@ function flushChatBuffer() {
   const lines = chatBuffer.map(m => `\`[${m.time}]\` **${m.name}**: ${m.text}`).join("\n");
   chatBuffer = [];
   sendDiscordJSON(CONFIG.webhooks.chat, {
-    username: "💐 Liga Promeriga | Chat",
+    username: t.wh_name_chat(),
     embeds: [{
       description: lines,
       color: 0x2d6a4f,
@@ -99,14 +99,16 @@ function webhookBaneo(player, reason, ban, byPlayer) {
   const byAuth = byPlayer ? (getAuth(byPlayer) ?? "N/A") : "N/A";
   const byName = byPlayer ? byPlayer.name : "el sistema";
   sendDiscordJSON(CONFIG.webhooks.baneos, {
-    username: "💐 Liga Promeriga | Baneos",
+    username: t.wh_name_baneos(),
     embeds: [{
-      title: "👢 Registro de Expulsión 👢",
+      title: t.wh_ban_title(),
       description:
-        `\`\`\`\nJugador Expulsado: ${player.name} [a.i] (Auth: ${auth} )\n` +
-        `Realizado por: ${byName} (Auth: ${byAuth})\n` +
-        `Razón: ${reason ?? "Sin razón"}\n` +
-        `¿Es Baneo Permanente?: ${ban ? "Sí" : "No"}\n\`\`\``,
+        `\`\`\`
+` + t.wh_ban_player(player.name, auth) + `
+` + t.wh_ban_by(byName, byAuth) + `
+` + t.wh_ban_reason(reason) + `
+` + t.wh_ban_permanent(ban) + `
+\`\`\``,
       color: ban ? 0xed4245 : 0xfaa61a,
       timestamp: new Date().toISOString(),
     }],
@@ -119,16 +121,16 @@ let penaltyCooldowns = new Map(); // auth → timestamp de liberación
 function webhookDescansoObligatorio(player, segundos) {
   const auth = getAuth(player) ?? "Auth no disponible en el momento del kick";
   sendDiscordJSON(CONFIG.webhooks.baneos, {
-    username: "💐 Liga Promeriga | Baneos",
+    username: t.wh_name_baneos(),
     embeds: [{
-      title: "👢 Registro de Expulsión 👢",
+      title: t.wh_ban_title(),
       description:
-        `\`\`\`\nJugador Expulsado: ${player.name} [a.i] (Auth: ${auth} )\n` +
-        `Realizado por: el sistema (Auth: N/A)\n` +
-        `Razón: ⚠️ DESCANSO OBLIGATORIO | Se te ha dado un descanso de 1 min por salirte durante un partido perdiendo.\n\n` +
-        `⏱️ Tiempo restante: ${segundos}s\n` +
-        `Espera para volver a entrar.\n` +
-        `¿Es Baneo Permanente?: No\n\`\`\``,
+        `\`\`\`
+` + t.wh_ban_player(player.name, auth) + `
+` + `Realizado por: el sistema (Auth: N/A)
+` + t.wh_rest_reason(segundos) + `
+` + t.wh_ban_permanent(false) + `
+\`\`\``,
       color: 0xfaa61a,
       timestamp: new Date().toISOString(),
     }],
@@ -146,10 +148,11 @@ function webhookConexion(player) {
   const now   = new Date();
   const hora  = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
   sendDiscordJSON(CONFIG.webhooks.actividad, {
-    username: "💐 Liga Promeriga | Actividad",
+    username: t.wh_name_actividad(),
     embeds: [{
       description:
-        `\`[${hora}]\` 🟢 **Nuevo Acceso**\n` +
+        `\`[${hora}]\` ` + t.wh_join_title() + `
+` +
         `👤 **${player.name}** [N/A]\n` +
         `🛡️ Rol: ${getRoleLabel(player)}\n\n` +
         `📊 Stats: Nivel ${nivel} | ${stats.wins}W/${stats.losses}L | ${stats.goals}⚽ | ${xp}✨\n` +
@@ -170,16 +173,17 @@ function webhookDesconexion(player, tiempoSesion) {
   const now   = new Date();
   const hora  = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
   sendDiscordJSON(CONFIG.webhooks.actividad, {
-    username: "💐 Liga Promeriga | Actividad",
+    username: t.wh_name_actividad(),
     embeds: [{
       description:
-        `\`[${hora}]\` 🔴 **Desconexión**\n` +
+        `\`[${hora}]\` ` + t.wh_leave_title() + `
+` +
         `👤 **${player.name}** [N/A]\n` +
         `🛡️ Rol: ${getRoleLabel(player)}\n` +
-        `⏱️ Tiempo en sala: ${Math.floor(tiempoSesion / 60)} minutos\n` +
-        `⚽ Goles esta sesión: ${stats._sessionGoals ?? 0}\n` +
-        `💛 Asistencias: ${stats._sessionAssists ?? 0}\n` +
-        `✨ XP ganada: ${stats._sessionXp ?? 0}\n` +
+        t.wh_leave_time(Math.floor(tiempoSesion / 60)) + `\n` +
+        t.wh_leave_goals(stats._sessionGoals ?? 0) + `\n` +
+        t.wh_leave_assists(stats._sessionAssists ?? 0) + `\n` +
+        t.wh_leave_xp(stats._sessionXp ?? 0) + `\n` +
         `🔒 Auth: \`${auth}\`\n` +
         `👥 Jugadores restantes: ${Math.max(0, room.getPlayerList().length - 1)}/${CONFIG.room.maxPlayers}`,
       color: 0xed4245,
@@ -195,13 +199,13 @@ function webhookSoporte(player, motivo = "llamada de admin") {
   const hora = now.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   sendDiscordJSON(CONFIG.webhooks.soporte, {
     content: "@everyone",
-    username: "💐 Liga Promeriga | Soporte",
+    username: t.wh_name_soporte(),
     embeds: [{
-      title: "🚨 ASISTENCIA REQUERIDA",
+      title: t.wh_support_title(),
       description:
-        `👤 **Usuario:** ${player.name}\n` +
-        `💬 **Motivo:** llamada de admin\n` +
-        `🔗 **Entrar a la sala:** ${link}\n` +
+        t.wh_support_user(player.name) + `\n` +
+        t.wh_support_motive(motivo) + `\n` +
+        t.wh_support_link(link) + `\n` +
         `🕐 **Hora:** ${hora}`,
       color: 0xed4245,
       timestamp: new Date().toISOString(),
@@ -245,30 +249,38 @@ function buildResultadoEmbed(g) {
 
   return {
     embeds: [{
-      title: `💐 Liga Promeriga - Reporte de Partido`,
+      title: t.wh_result_title(),
       description:
-        `**💐 LIGA PROMERIGA - RETURNS** | **Partido Competitivo** |\n\n` +
-        `**Resultado Final:** ${s.red} - ${s.blue} | ${formatTime(s.time)} minutos\n` +
-        `**Ganador:** ${winner === 1 ? "ROJO" : winner === 2 ? "AZUL" : "EMPATE"}\n\n` +
+        t.wh_result_header() + `\n\n` +
+        t.wh_result_final(s.red, s.blue, formatTime(s.time)) + `
+` +
+        t.wh_result_winner(winner) + `
+
+` +
         (csStr ? csStr + "\n" : "") +
         `\`\`\`\n` +
         `────────────────────\n` +
-        `GANADOR – ${winner === 1 ? "ROJO" : "AZUL"}\n` +
+        t.wh_winner_label(winner) + `
+` +
         (winner === 1 ? redLines : blueLines) + "\n\n" +
         (winner === 1 ? "AZUL" : "ROJO") + "\n" +
         (winner === 1 ? blueLines : redLines) + "\n" +
         `────────────────────\n` +
         `Estadísticas del Partido\n\n` +
-        `⭐ MVP: ${mvp?.player.name ?? "N/A"}\n` +
-        `⏱️ Duración: ${formatTime(s.time)}\n` +
-        `📊 Posesión: 🔴 ${redPoss}% | 🔵 ${bluePoss}%\n` +
-        `🆔 Partido: ${matchId}\n` +
+        t.wh_mvp(mvp?.player.name ?? "N/A") + `
+` +
+        t.wh_duration(formatTime(s.time)) + `
+` +
+        t.wh_possession(redPoss, bluePoss) + `
+` +
+        t.wh_match_id(matchId) + `
+` +
         `📅 ${now.toLocaleDateString("es-CO", { weekday:"long", year:"numeric", month:"long", day:"numeric" })}, ${now.toLocaleTimeString("es-CO")}\n` +
         `\`\`\``,
       color: winner === 1 ? 0xe74c3c : winner === 2 ? 0x3498db : 0x95a5a6,
       timestamp: new Date().toISOString(),
     }],
-    username: "💐 Liga Promeriga | Partidos",
+    username: t.wh_name_partidos(),
   };
 }
 
@@ -279,7 +291,7 @@ function fetchResultado(g) {
   setTimeout(() => {
     const formData = new FormData();
     formData.append(null, new File([g.rec], getRecordingName(g), { type: "text/plain" }));
-    formData.append("payload_json", JSON.stringify({ username: "💐 Liga Promeriga | Partidos" }));
+    formData.append("payload_json", JSON.stringify({ username: t.wh_name_partidos() }));
     fetch(CONFIG.webhooks.recordings, { method: "POST", body: formData })
       .catch(e => console.error("Recording error:", e));
   }, 500);
@@ -287,4 +299,3 @@ function fetchResultado(g) {
 
 // ── Sesión por jugador (para webhook de desconexión) ──────────────────────────
 const sessionStart = new Map(); // playerId → timestamp
-
