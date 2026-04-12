@@ -30,9 +30,10 @@ const patches = [
   // ── 1. Suprimir console.log interno ────────────────────────────────────────
   // Elimina el spam de errores de conexión en stdout — gran ahorro de I/O
   {
-    name:    'Suprimir console.log interno',
-    find:    /A\.console\.log\(N\)/g,
-    replace: '(void 0)',
+    name:   'Suprimir console.log interno',
+    custom: (s) => s
+      .replace(/F\.console\.log\(N\)/g, '(void 0)')
+      .replace(/F\.console\.log\(\$\)/g, '(void 0)'),
   },
 
   // ── 2. Tick interval 50ms → 100ms ──────────────────────────────────────────
@@ -42,22 +43,17 @@ const patches = [
   // 50ms → 100ms = la mitad de llamadas, misma lógica de juego.
   {
     name:    'Tick interval 50ms → 100ms',
-    find:    'setInterval(function(){K.Ca()},50)',
-    replace: 'setInterval(function(){K.Ca()},100)',
+    find:    'setInterval(function(){E.Ca()},50)',
+    replace: 'setInterval(function(){E.Ca()},100)',
   },
 
   // ── 3. Heartbeat 3000ms → 6000ms ───────────────────────────────────────────
   // El heartbeat envía el estado de la sala al servidor HaxBall.
   // Cada 6s en vez de 3s = la mitad del tráfico saliente por sala.
   {
-    name:    'Heartbeat 3000ms → 6000ms',
-    find:    'setInterval(function(){K.nc(',
-    replace: 'setInterval(function(){K.nc(',
-    // We patch the value after
-    custom: (s) => s.replace(
-      /setInterval\(function\(\)\{K\.nc\([^)]+\)\},3000\)/,
-      (m) => m.replace(',3000)', ',6000)')
-    ),
+    name:   'Heartbeat 3000ms → 6000ms',
+    find:    'setInterval(function(){E.nc(U0.V(E))},3000)',
+    replace: 'setInterval(function(){E.nc(U0.V(E))},6000)',
   },
 
   // ── 4. Snapshot interval 600 → 1200 ticks ──────────────────────────────────

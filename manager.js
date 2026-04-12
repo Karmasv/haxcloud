@@ -11,7 +11,7 @@
 //    SALAS=co-x1,us-x3 node manager.js  ← salas específicas
 // =============================================================================
 
-const HaxballJS = require('haxball.js').default;
+const HaxballJS = require('./haxball.local.cjs').default;
 const { crearSala } = require('./sala');
 
 const TODAS_LAS_SALAS = [
