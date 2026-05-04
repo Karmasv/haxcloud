@@ -89,7 +89,6 @@ function announceWinProbability() {
   announceAll(`🔴 RED: ${((rs/total)*100).toFixed(1)}%  |  🔵 BLUE: ${((bs/total)*100).toFixed(1)}%`, 0x52b788, "bold", 0);
 }
 
-
 function helpCommand(player, message) {
   const args = message.split(/ +/).slice(1);
   const role = getRole(player);
@@ -341,7 +340,6 @@ function renameCommand(player, message) {
   announce(t.rename_done(newName), player.id, 0xffefd6, "bold", 1);
 }
 
-
 function claimAdminCommand(player, message) {
   const args = message.split(/ +/).slice(1);
   if (args[0] !== CONFIG.claimPassword) {
@@ -523,7 +521,6 @@ function slowmodeCommand(player, message) {
   announceAll(t.slowmode_msg(n), 0xffefd6, "bold", 1);
 }
 
-
 function xpCommand(player) {
   const auth  = getAuth(player);
   const stats = getStats(auth);
@@ -540,17 +537,14 @@ function xpCommand(player) {
   );
 }
 
-
-  const auth  = getAuth(player);
-  const stats = getStats(auth);
-  const xp    = stats.xp ?? 0;
-  const rango = getRango(xp);
-  const nivel = getNivel(xp);
-  const next  = RANGOS[rango.index + 1];
-  const progreso = next
-    ? t.xp_progress(xp - rango.xpMin, next.xpMin - rango.xpMin, next.nombre)
-    : t.xp_max();
-
+// Comando temporal para debug de actividad (tecla T, etc.)
+function debugActivityCommand(player) {
+  const act = player.activity;
+  announce(
+    `🔢 Tu actividad actual: ${act} (binario: ${act.toString(2).padStart(8, '0')})`,
+    player.id, 0x00ffff, "bold", 1
+  );
+}
 
 function getCommand(name) {
   if (commands[name]) return name;
@@ -585,6 +579,8 @@ const commands = {
   calladmin:   { aliases: ["admin"],             minRole: 0, desc: "Llamar a un administrador.",                                function: callAdminCommand },
   rename:      { aliases: [],                    minRole: 0, desc: "Cambiar nombre en estadísticas.",                           function: renameCommand },
   claimadmin:  { aliases: [],                    minRole: 0, desc: false,                                                       function: claimAdminCommand },
+  // Comando de debug (oculto en help)
+  debugactivity: { aliases: ["da", "bits"],      minRole: 0, desc: false,                                                       function: debugActivityCommand },
   // ── VIP ───────────────────────────────────────────────────────────────────
   jump:        { aliases: [],                    minRole: 1, desc: "Saltar al primer lugar de la fila (VIP+).",                 function: jumpCommand },
   // ── Mod ───────────────────────────────────────────────────────────────────

@@ -1,8 +1,9 @@
 // =============================================================================
-//  events.js — Event handlers de HaxBall
+//  events.js — Event handlers de HaxBall (Power Bar + Sliding)
 // =============================================================================
 
 room.onPlayerJoin = function(player) {
+  // Almacenamos auth y conn directamente desde el objeto player (gracias al parche)
   authMap.set(player.id, { auth: player.auth, conn: player.conn });
 
   // Blacklist
@@ -253,10 +254,137 @@ room.onGameTick = function() {
   handleActivity();
   handleAvatarMovement();
   calculateStadiumVariables();
+
+  // Mecánicas avanzadas
+  handleAdvancedInput();
 };
 
 // =============================================================================
-//  SECCIÓN 26: ARRANQUE INICIAL
+//  Mecánicas Avanzadas: Power Bar + Sliding
+// =============================================================================
+
+// Mapas de control
+const powerChargeMap = new Map();   // Power Bar
+const slideCooldown = new Map();    // Tiempo hasta que el jugador puede volver a usar slide
+const slideState = new Map();       // Estado actual del slide: { elapsed, dirX, dirY }
+
+// Configuración del Sliding
+const SLIDE_DURATION_TICKS = 12;   // ~200 ms a 60 ticks/s
+const SLIDE_SPEED = 8;             // Impulso base
+const SLIDE_COOLDOWN_MS = 3000;    // 3 segundos
+
+function handleAdvancedInput() {
+  const players = room.getPlayerList().filter(p => p.team !== 0);
+  const now = Date.now();
+
+  for (const player of players) {
+    if (!player.activity) continue;
+
+    // ========== POWER BAR (carga de disparo) ==========
+    const isKicking = (player.activity & 16) !== 0;
+
+    if (isKicking) {
+      if (!powerChargeMap.has(player.id)) {
+        powerChargeMap.set(player.id, { chargeStart: now });
+      }
+    } else {
+      if (powerChargeMap.has(player.id)) {
+        const charge = powerChargeMap.get(player.id);
+        const holdTime = now - charge.chargeStart;
+        if (holdTime >= 400) {
+          const multiplier = Math.min(1.5 + (holdTime - 400) / 800 * 1.5, 3.0);
+          const disc = room.getPlayerDiscProperties(player.id);
+          if (disc) {
+            room.setPlayerDiscProperties(player.id, {
+              xspeed: disc.xspeed * multiplier,
+              yspeed: disc.yspeed * multiplier
+            });
+            room.sendAnnouncement(
+              `💥 ¡Disparo cargado! (${multiplier.toFixed(1)}x)`,
+              player.id, 0xff6600, "bold", 1
+            );
+          }
+        }
+        powerChargeMap.delete(player.id);
+      }
+    }
+
+    // ========== SLIDING (W + S simultáneas) ==========
+    const pressingW = (player.activity & 1) !== 0;
+    const pressingS = (player.activity & 2) !== 0;
+    const wantsToSlide = pressingW && pressingS;
+
+    // Si ya está en slide
+    if (slideState.has(player.id)) {
+      const state = slideState.get(player.id);
+      state.elapsed++;
+
+      if (state.elapsed >= SLIDE_DURATION_TICKS || !wantsToSlide) {
+        // Termina el slide: frena al jugador
+        room.setPlayerDiscProperties(player.id, { xspeed: 0, yspeed: 0 });
+        slideState.delete(player.id);
+      } else {
+        // Mantiene la velocidad de slide
+        room.setPlayerDiscProperties(player.id, {
+          xspeed: state.dirX * SLIDE_SPEED,
+          yspeed: state.dirY * SLIDE_SPEED
+        });
+      }
+      continue;
+    }
+
+    // Iniciar slide si presiona W+S y no está en cooldown
+    if (wantsToSlide) {
+      if (slideCooldown.has(player.id) && now < slideCooldown.get(player.id)) {
+        // En cooldown, no hace nada
+        continue;
+      }
+
+      // Obtiene dirección actual del jugador
+      const disc = room.getPlayerDiscProperties(player.id);
+      if (!disc) continue;
+      let dirX = disc.xspeed;
+      let dirY = disc.yspeed;
+      const len = Math.sqrt(dirX * dirX + dirY * dirY);
+      if (len < 0.1) {
+        // Si está parado, desliza hacia abajo por defecto
+        dirX = 0;
+        dirY = 1;
+      } else {
+        dirX /= len;
+        dirY /= len;
+      }
+
+      // Activa el slide
+      slideState.set(player.id, {
+        elapsed: 0,
+        dirX: dirX,
+        dirY: dirY
+      });
+      slideCooldown.set(player.id, now + SLIDE_COOLDOWN_MS);
+      room.sendAnnouncement(
+        "🛼 ¡Slide!",
+        player.id, 0x00ccff, "bold", 1
+      );
+    }
+  }
+
+  // Limpieza: eliminar datos de jugadores que ya no están en cancha
+  for (const [id] of powerChargeMap) {
+    if (!players.some(p => p.id === id)) powerChargeMap.delete(id);
+  }
+  for (const [id] of slideState) {
+    if (!players.some(p => p.id === id)) slideState.delete(id);
+  }
+  for (const [id] of slideCooldown) {
+    if (!players.some(p => p.id === id) && now >= slideCooldown.get(id)) {
+      slideCooldown.delete(id);
+    }
+  }
+}
+
+// =============================================================================
+//  ARRANQUE INICIAL
 // =============================================================================
 
 game = new Game();
