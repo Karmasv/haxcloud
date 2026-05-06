@@ -1,9 +1,8 @@
-# 💐 Liga Promeriga - Returns — Sala Pública
-
+# HAXCLOUD SCRIPT
 ## Estructura de archivos
 
 ```
-liga-promeriga/
+haxcloud/
 ├── index.js        ← Punto de entrada (carga todos los módulos)
 ├── config.js       ← CONFIG, webhooks, listas de usuarios (owners, admins, etc.)
 ├── classes.js      ← Clases: Goal, Game, PlayerComposition, MutePlayer, etc.

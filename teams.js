@@ -1,5 +1,5 @@
 // =============================================================================
-//  teams.js — Gestión de equipos, lineups y balance automático
+//  teams.js — Gestión de equipos, balance automático, choose mode y Gana Sigue
 // =============================================================================
 
 function updateTeams() {
@@ -264,7 +264,6 @@ function slowModeFunction(player) {
 }
 
 
-
 function balanceTeams() {
   if (chooseMode) return;
   if (players.length === 0) { room.stopGame(); return; }
@@ -455,4 +454,281 @@ function handlePlayersStop(byPlayer) {
     }, 500);
     startTimeout = setTimeout(() => room.startGame(), 2000);
   }
+}
+
+// =============================================================================
+//  NUEVO SISTEMA: GANA SIGUE + PICK
+// =============================================================================
+
+// Estado global del pick
+const ganaSigueState = {
+  active: false,              // ¿Estamos en fase de pick?
+  redCaptain: null,           // ID del capitán rojo
+  blueCaptain: null,          // ID del capitán azul
+  pickingTeam: 0,             // ¿Qué equipo elige ahora? (1 = rojo, 2 = azul)
+  picksThisTurn: 0,           // Picks que lleva el equipo actual (para el patrón 1-2-2-2...)
+  timeout: null,              // Timeout para la elección
+  MAX_PLAYERS_PER_TEAM: 4,    // Tamaño máximo de equipo
+  PICK_TIMEOUT_MS: 30000      // 30 segundos para elegir
+};
+
+/**
+ * Arranca el sistema Gana Sigue después de que termine un partido.
+ */
+function iniciarGanaSigue() {
+  updateTeams();
+
+  // Si no hay suficientes jugadores, arranca normal
+  if (players.length < 4) {
+    balanceTeams();
+    startTimeout = setTimeout(() => room.startGame(), 2000);
+    return;
+  }
+
+  // Determinar quién ganó (o equipo local si empate)
+  const winner = lastWinner === 1 ? 1 : lastWinner === 2 ? 2 : 1;
+
+  // Mover al equipo perdedor a espectadores
+  if (winner === 1) {
+    for (const p of teamBlue) room.setPlayerTeam(p.id, 0);
+  } else {
+    for (const p of teamRed) room.setPlayerTeam(p.id, 0);
+  }
+
+  updateTeams();
+
+  // El equipo ganador se queda (ya está en su team)
+  // Elegir capitanes
+  const equipoGanador = winner === 1 ? teamRed : teamBlue;
+  const espectadores = teamSpec;
+
+  if (equipoGanador.length === 0 || espectadores.length === 0) {
+    // Sin algún equipo, balance normal
+    balanceTeams();
+    startTimeout = setTimeout(() => room.startGame(), 2000);
+    return;
+  }
+
+  // Capitán del equipo ganador: el que más XP tenga
+  let redCap, blueCap;
+  if (winner === 1) {
+    redCap = elegirCapitan(equipoGanador);
+    blueCap = elegirCapitan(espectadores);
+  } else {
+    blueCap = elegirCapitan(equipoGanador);
+    redCap = elegirCapitan(espectadores);
+  }
+
+  if (!redCap || !blueCap) {
+    balanceTeams();
+    startTimeout = setTimeout(() => room.startGame(), 2000);
+    return;
+  }
+
+  // Mover al capitán azul al equipo azul
+  room.setPlayerTeam(blueCap.id, 2);
+  updateTeams();
+
+  // Configurar estado
+  ganaSigueState.active = true;
+  ganaSigueState.redCaptain = redCap.id;
+  ganaSigueState.blueCaptain = blueCap.id;
+  ganaSigueState.pickingTeam = 1; // Empieza rojo
+  ganaSigueState.picksThisTurn = 0;
+  ganaSigueState.MAX_PLAYERS_PER_TEAM = Math.min(4, Math.floor(players.length / 2));
+
+  chooseMode = true;
+  slowMode = 3;
+  announceAll(t.slowmode_msg(3), 0xffefd6, "bold", 1);
+
+  announceAll(
+    `🏆 ¡GANAS SIGUE! ${winner === 1 ? '🔴 ROJO' : '🔵 AZUL'} se queda en cancha.\n` +
+    `👑 Capitanes: ${redCap.name} (🔴) vs ${blueCap.name} (🔵)\n` +
+    `📖 Cada capitán usa !pick <número> para elegir.`,
+    0xffd700, "bold", 2
+  );
+
+  // Iniciar primera ronda de pick
+  iniciarRondaPick();
+}
+
+/**
+ * Elige al jugador con más XP de una lista.
+ */
+function elegirCapitan(lista) {
+  if (lista.length === 0) return null;
+  let mejor = lista[0];
+  let mejorXP = -1;
+  for (const p of lista) {
+    const auth = getAuth(p);
+    if (!auth) continue;
+    const stats = getStats(auth);
+    const xp = stats.xp ?? 0;
+    if (xp > mejorXP) {
+      mejorXP = xp;
+      mejor = p;
+    }
+  }
+  return mejor;
+}
+
+/**
+ * Inicia una ronda de pick para que el capitán actual elija.
+ */
+function iniciarRondaPick() {
+  clearTimeout(ganaSigueState.timeout);
+
+  const capId = ganaSigueState.pickingTeam === 1
+    ? ganaSigueState.redCaptain
+    : ganaSigueState.blueCaptain;
+
+  const cap = room.getPlayer(capId);
+  if (!cap) {
+    finalizarGanaSigue();
+    return;
+  }
+
+  updateTeams();
+  const specs = teamSpec;
+
+  // Si no hay espectadores, terminar
+  if (specs.length === 0 || teamsCompletos()) {
+    finalizarGanaSigue();
+    return;
+  }
+
+  // Mostrar lista de espectadores al capitán
+  let lista = "📃 Jugadores disponibles:\n";
+  specs.forEach((p, i) => {
+    const auth = getAuth(p);
+    const stats = auth ? getStats(auth) : null;
+    const xp = stats?.xp ?? 0;
+    lista += `  ${i + 1}. ${p.name} (XP: ${xp})\n`;
+  });
+  room.sendAnnouncement(lista, cap.id, 0xe2e2e2, "normal", 1);
+  room.sendAnnouncement(
+    `👉 Eres el capitán. Usa !pick <número> para elegir (30 segundos).`,
+    cap.id, 0xffd700, "bold", 2
+  );
+
+  // Timeout: si no elige, se asigna aleatorio
+  ganaSigueState.timeout = setTimeout(() => {
+    const specs = teamSpec;
+    if (specs.length > 0 && !teamsCompletos()) {
+      const randomPick = specs[getRandomInt(specs.length)];
+      aplicarPick(ganaSigueState.pickingTeam, randomPick, true);
+    }
+  }, ganaSigueState.PICK_TIMEOUT_MS);
+}
+
+/**
+ * Verifica si ambos equipos ya están completos.
+ */
+function teamsCompletos() {
+  const reds = teamRed.length;
+  const blues = teamBlue.length;
+  const max = ganaSigueState.MAX_PLAYERS_PER_TEAM;
+  return reds >= max && blues >= max;
+}
+
+/**
+ * Aplica una elección de un capitán.
+ * @param {number} team - Equipo que recibe al jugador (1 o 2)
+ * @param {object} targetPlayer - Jugador elegido
+ * @param {boolean} silent - Si es true, no muestra anuncio de "X eligió a Y"
+ */
+function aplicarPick(team, targetPlayer, silent = false) {
+  if (targetPlayer.team !== 0) return; // Ya está en un equipo
+
+  room.setPlayerTeam(targetPlayer.id, team);
+  updateTeams();
+
+  if (!silent) {
+    const capId = team === 1 ? ganaSigueState.redCaptain : ganaSigueState.blueCaptain;
+    const cap = room.getPlayer(capId);
+    if (cap) {
+      announceAll(
+        `✅ ${cap.name} eligió a ${targetPlayer.name} para el equipo ${team === 1 ? '🔴 ROJO' : '🔵 AZUL'}.`,
+        0xffd700, "bold", 1
+      );
+    }
+  }
+
+  // Control del patrón de picks: 1-2-2-2...
+  ganaSigueState.picksThisTurn++;
+
+  if (ganaSigueState.picksThisTurn === 1) {
+    // Primer pick del turno: cambia al otro equipo
+    ganaSigueState.pickingTeam = ganaSigueState.pickingTeam === 1 ? 2 : 1;
+    ganaSigueState.picksThisTurn = 0;
+  }
+
+  // Verificar si ya terminamos
+  if (teamsCompletos() || teamSpec.length === 0) {
+    finalizarGanaSigue();
+  } else {
+    iniciarRondaPick();
+  }
+}
+
+/**
+ * Comando !pick para los capitanes.
+ */
+function pickCommand(player, message) {
+  if (!ganaSigueState.active) {
+    announce("❌ No hay fase de pick activa.", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const capId = ganaSigueState.pickingTeam === 1
+    ? ganaSigueState.redCaptain
+    : ganaSigueState.blueCaptain;
+
+  if (player.id !== capId) {
+    announce("❌ No es tu turno de elegir.", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const arg = message.split(/ +/)[1];
+  const n = parseInt(arg);
+  if (isNaN(n) || n < 1 || n > teamSpec.length) {
+    announce(`❌ Elige un número del 1 al ${teamSpec.length}.`, player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const target = teamSpec[n - 1];
+  if (!target) {
+    announce("❌ Jugador no válido.", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  aplicarPick(ganaSigueState.pickingTeam, target);
+}
+
+/**
+ * Finaliza el Gana Sigue y arranca el partido.
+ */
+function finalizarGanaSigue() {
+  clearTimeout(ganaSigueState.timeout);
+  ganaSigueState.active = false;
+  ganaSigueState.redCaptain = null;
+  ganaSigueState.blueCaptain = null;
+
+  chooseMode = false;
+  slowMode = 0;
+  announceAll(t.slowmode_off(), 0xffefd6, "bold", 1);
+
+  // Si algún equipo está incompleto, balancear automáticamente
+  updateTeams();
+  if (teamRed.length !== teamBlue.length) {
+    const diff = Math.abs(teamRed.length - teamBlue.length);
+    const smaller = teamRed.length < teamBlue.length ? 1 : 2;
+    for (let i = 0; i < diff && teamSpec.length > 0; i++) {
+      room.setPlayerTeam(teamSpec[0].id, smaller);
+    }
+  }
+
+  announceAll("⚽ ¡Partido listo! Comenzando...", 0x52b788, "bold", 2);
+  updateTeams();
+  startTimeout = setTimeout(() => room.startGame(), 2000);
 }

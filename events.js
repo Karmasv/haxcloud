@@ -1,5 +1,5 @@
 // =============================================================================
-//  events.js — Event handlers de HaxBall (Power Bar + Sliding)
+//  events.js — Event handlers de HaxBall (Power Bar + Sliding + Gana Sigue)
 // =============================================================================
 
 room.onPlayerJoin = function(player) {
@@ -203,7 +203,14 @@ room.onGameStop = function(player) {
   gameState          = 2;
   playSituation      = 0;
   updateTeams();
-  handlePlayersStop(player);
+
+  // Activar Gana Sigue si el partido terminó naturalmente
+  if (!cancelGameVariable && endGameVariable) {
+    iniciarGanaSigue();
+  } else {
+    handlePlayersStop(player);
+  }
+
   handleActivityStop();
 };
 

@@ -546,6 +546,38 @@ function debugActivityCommand(player) {
   );
 }
 
+// Comando !pick para el sistema Gana Sigue
+function pickCommand(player, message) {
+  if (!ganaSigueState || !ganaSigueState.active) {
+    announce("❌ No hay fase de pick activa.", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const capId = ganaSigueState.pickingTeam === 1
+    ? ganaSigueState.redCaptain
+    : ganaSigueState.blueCaptain;
+
+  if (player.id !== capId) {
+    announce("❌ No es tu turno de elegir.", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const arg = message.split(/ +/)[1];
+  const n = parseInt(arg);
+  if (isNaN(n) || n < 1 || n > teamSpec.length) {
+    announce(`❌ Elige un número del 1 al ${teamSpec.length}.`, player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const target = teamSpec[n - 1];
+  if (!target) {
+    announce("❌ Jugador no válido.", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  aplicarPick(ganaSigueState.pickingTeam, target);
+}
+
 function getCommand(name) {
   if (commands[name]) return name;
   for (const [key, cmd] of Object.entries(commands)) {
@@ -579,6 +611,7 @@ const commands = {
   calladmin:   { aliases: ["admin"],             minRole: 0, desc: "Llamar a un administrador.",                                function: callAdminCommand },
   rename:      { aliases: [],                    minRole: 0, desc: "Cambiar nombre en estadísticas.",                           function: renameCommand },
   claimadmin:  { aliases: [],                    minRole: 0, desc: false,                                                       function: claimAdminCommand },
+  pick:        { aliases: ["elegir", "p"],        minRole: 0, desc: "Elegir jugador durante el pick (capitanes).",              function: pickCommand },
   // Comando de debug (oculto en help)
   debugactivity: { aliases: ["da", "bits"],      minRole: 0, desc: false,                                                       function: debugActivityCommand },
   // ── VIP ───────────────────────────────────────────────────────────────────
