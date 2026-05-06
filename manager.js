@@ -1,18 +1,18 @@
 'use strict';
 // =============================================================================
-//  manager.js — Gestor multi-sala Liga Promeriga
+//  manager.js — Gestor multi-sala Liga Promeriga (con Worker Threads)
 //
-//  Corre hasta 20 salas en UN SOLO proceso Node.
-//  HaxballJS() se llama UNA sola vez — todas las salas comparten el runtime.
+//  Cada sala corre en su propio Worker con límites de memoria.
+//  Si un Worker se cae, se reinicia automáticamente.
 //
 //  Uso:
-//    node manager.js                     ← todas las salas activas
-//    PAISES=co,cr node manager.js        ← solo Colombia y Costa Rica
-//    SALAS=co-x1,us-x3 node manager.js  ← salas específicas
+//    node --expose-gc manager.js
+//    PAISES=co,cr node --expose-gc manager.js
+//    SALAS=co-x1,us-x3 node --expose-gc manager.js
 // =============================================================================
 
-const HaxballJS = require('./haxball.local.cjs').default;
-const { crearSala } = require('./sala');
+const { Worker } = require('worker_threads');
+const path = require('path');
 
 const TODAS_LAS_SALAS = [
   ...require('./salas/co'),
@@ -22,7 +22,7 @@ const TODAS_LAS_SALAS = [
 ];
 
 const DELAY_MS = parseInt(process.env.DELAY || '10000');
-const salasActivas = new Map();
+const salasActivas = new Map(); // id → { worker, cfg }
 
 function filtrarSalas() {
   const paises = process.env.PAISES?.split(',').map(s => s.trim());
@@ -32,20 +32,53 @@ function filtrarSalas() {
   return TODAS_LAS_SALAS;
 }
 
-async function iniciarSala(HBInit, cfg, intento = 1) {
+function iniciarSala(cfg, intento = 1) {
   const MAX_INTENTOS = 5;
   const RETRY_DELAY  = 30_000;
   console.log(`[${cfg.id}] Iniciando (intento ${intento}/${MAX_INTENTOS})...`);
+
   try {
-    if (salasActivas.has(cfg.id)) salasActivas.delete(cfg.id);
-    const ctx = crearSala(HBInit, cfg);
-    salasActivas.set(cfg.id, ctx);
-    console.log(`[${cfg.id}] ✅ Sala activa`);
+    const worker = new Worker(path.join(__dirname, 'worker.js'), {
+      workerData: cfg,
+      resourceLimits: {
+        maxOldGenerationSizeMb: 45, // Heap máximo por sala
+        maxYoungGenerationSizeMb: 8,
+      },
+    });
+
+    worker.on('message', (msg) => {
+      if (msg.type === 'ready') {
+        salasActivas.set(cfg.id, { worker, cfg });
+        console.log(`[${cfg.id}] ✅ Sala activa`);
+      } else if (msg.type === 'error') {
+        console.error(`[${cfg.id}] ❌ ${msg.message}`);
+      } else if (msg.type === 'stats') {
+        // Log silencioso de métricas si se desea
+        // console.log(`[${cfg.id}] RAM: ${msg.ram}MB | Jugadores: ${msg.players}`);
+      }
+    });
+
+    worker.on('error', (err) => {
+      console.error(`[${cfg.id}] Error de Worker: ${err.message}`);
+    });
+
+    worker.on('exit', (code) => {
+      salasActivas.delete(cfg.id);
+      if (code !== 0 && intento < MAX_INTENTOS) {
+        console.warn(`[${cfg.id}] Worker terminó con código ${code}. Reintentando en ${RETRY_DELAY / 1000}s...`);
+        setTimeout(() => iniciarSala(cfg, intento + 1), RETRY_DELAY);
+      } else if (code !== 0) {
+        console.error(`[${cfg.id}] ⛔ Sin más intentos.`);
+      } else {
+        console.log(`[${cfg.id}] Worker finalizado limpiamente.`);
+      }
+    });
+
   } catch (err) {
-    console.error(`[${cfg.id}] ❌ Error: ${err.message}`);
+    console.error(`[${cfg.id}] ❌ Error al crear Worker: ${err.message}`);
     if (intento < MAX_INTENTOS) {
-      console.log(`[${cfg.id}] Reintentando en ${RETRY_DELAY/1000}s...`);
-      setTimeout(() => iniciarSala(HBInit, cfg, intento + 1), RETRY_DELAY);
+      console.log(`[${cfg.id}] Reintentando en ${RETRY_DELAY / 1000}s...`);
+      setTimeout(() => iniciarSala(cfg, intento + 1), RETRY_DELAY);
     } else {
       console.error(`[${cfg.id}] ⛔ Sin más intentos.`);
     }
@@ -57,29 +90,20 @@ async function main() {
   const sinToken    = salas.filter(s => !s.token || s.token.startsWith('TOKEN_'));
   const salasValidas = salas.filter(s => s.token && !s.token.startsWith('TOKEN_'));
 
-  console.log(`\n🌱 Liga Promeriga Manager`);
+  console.log(`\n🌱 Liga Promeriga Manager (Workers)`);
   console.log(`   Node ${process.version} | PID ${process.pid}`);
   console.log(`   Salas a levantar:  ${salasValidas.length}`);
   if (sinToken.length) console.warn(`   Sin token (omitidas): ${sinToken.map(s => s.id).join(', ')}`);
-  console.log(`   Delay entre salas: ${DELAY_MS/1000}s\n`);
+  console.log(`   Delay entre salas: ${DELAY_MS / 1000}s\n`);
 
   if (!salasValidas.length) {
     console.error('❌ No hay salas válidas. Revisá los tokens en salas/*.js');
     process.exit(1);
   }
 
-  console.log('Inicializando HaxballJS (una sola vez para todas las salas)...');
-  let HBInit;
-  try {
-    HBInit = await HaxballJS();
-    console.log('✅ HaxballJS listo.\n');
-  } catch (err) {
-    console.error('❌ Error inicializando HaxballJS:', err);
-    process.exit(1);
-  }
-
+  // Ya no necesitamos inicializar HaxballJS aquí; cada Worker lo hace.
   salasValidas.forEach((cfg, i) => {
-    setTimeout(() => iniciarSala(HBInit, cfg), i * DELAY_MS);
+    setTimeout(() => iniciarSala(cfg), i * DELAY_MS);
   });
 
   setInterval(() => {
@@ -92,6 +116,12 @@ async function main() {
 
 process.on('uncaughtException',  (err)    => console.error(`💥 uncaughtException: ${err.message}`));
 process.on('unhandledRejection', (reason) => console.error(`💥 unhandledRejection:`, reason));
-process.on('SIGINT', () => { console.log(`\n🛑 Cerrando...`); process.exit(0); });
+process.on('SIGINT', () => {
+  console.log(`\n🛑 Cerrando workers...`);
+  for (const [id, { worker }] of salasActivas) {
+    worker.terminate();
+  }
+  process.exit(0);
+});
 
 main();
