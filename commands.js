@@ -348,7 +348,6 @@ function claimAdminCommand(player, message) {
   }
   const auth = getAuth(player);
   if (ownerList.some(o => o[0] === auth)) {
-    // Ya es owner, simplemente reactivar admin de sala
     room.setPlayerAdmin(player.id, true);
     announce(t.owner_relogin(), player.id, 0xffefd6, "bold", 1);
     return;
@@ -537,45 +536,26 @@ function xpCommand(player) {
   );
 }
 
-// Comando temporal para debug de actividad (tecla T, etc.)
-function debugActivityCommand(player) {
-  const act = player.activity;
-  announce(
-    `🔢 Tu actividad actual: ${act} (binario: ${act.toString(2).padStart(8, '0')})`,
-    player.id, 0x00ffff, "bold", 1
-  );
-}
+// --- NUEVO: Comando Anti-VPN ---
+function antiVPNCommand(player, message) {
+  const args = message.split(/ +/).slice(1);
+  const allowed = getRole(player) >= 3; // Admin+
 
-// Comando !pick para el sistema Gana Sigue
-function pickCommand(player, message) {
-  if (!ganaSigueState || !ganaSigueState.active) {
-    announce("❌ No hay fase de pick activa.", player.id, 0xed5050, "bold", 1);
+  if (!allowed) {
+    announce(t.cmd_no_perm(), player.id, 0xed5050, "bold", 1);
     return;
   }
 
-  const capId = ganaSigueState.pickingTeam === 1
-    ? ganaSigueState.redCaptain
-    : ganaSigueState.blueCaptain;
-
-  if (player.id !== capId) {
-    announce("❌ No es tu turno de elegir.", player.id, 0xed5050, "bold", 1);
+  if (args.length !== 1 || (args[0] !== 'on' && args[0] !== 'off')) {
+    announce('❌ Uso: !antivpn on/off', player.id, 0xed5050, "bold", 1);
     return;
   }
 
-  const arg = message.split(/ +/)[1];
-  const n = parseInt(arg);
-  if (isNaN(n) || n < 1 || n > teamSpec.length) {
-    announce(`❌ Elige un número del 1 al ${teamSpec.length}.`, player.id, 0xed5050, "bold", 1);
-    return;
-  }
-
-  const target = teamSpec[n - 1];
-  if (!target) {
-    announce("❌ Jugador no válido.", player.id, 0xed5050, "bold", 1);
-    return;
-  }
-
-  aplicarPick(ganaSigueState.pickingTeam, target);
+  antiVPNEnabled = (args[0] === 'on');
+  const estado = antiVPNEnabled ? 'ACTIVADO' : 'DESACTIVADO';
+  const color = antiVPNEnabled ? 0x57f287 : 0xed4245;
+  
+  announceAll(`🛡️ Filtro Anti-VPN: ${estado}`, color, "bold", 1);
 }
 
 function getCommand(name) {
@@ -611,9 +591,6 @@ const commands = {
   calladmin:   { aliases: ["admin"],             minRole: 0, desc: "Llamar a un administrador.",                                function: callAdminCommand },
   rename:      { aliases: [],                    minRole: 0, desc: "Cambiar nombre en estadísticas.",                           function: renameCommand },
   claimadmin:  { aliases: [],                    minRole: 0, desc: false,                                                       function: claimAdminCommand },
-  pick:        { aliases: ["elegir", "p"],        minRole: 0, desc: "Elegir jugador durante el pick (capitanes).",              function: pickCommand },
-  // Comando de debug (oculto en help)
-  debugactivity: { aliases: ["da", "bits"],      minRole: 0, desc: false,                                                       function: debugActivityCommand },
   // ── VIP ───────────────────────────────────────────────────────────────────
   jump:        { aliases: [],                    minRole: 1, desc: "Saltar al primer lugar de la fila (VIP+).",                 function: jumpCommand },
   // ── Mod ───────────────────────────────────────────────────────────────────
@@ -633,6 +610,7 @@ const commands = {
   banlist:     { aliases: ["bans"],              minRole: 3, desc: "Ver baneados.",                                             function: banListCommand },
   password:    { aliases: [],                    minRole: 3, desc: "Contraseña de sala. !password [clave]",                     function: passwordCommand },
   stafflist:   { aliases: ["adminlist"],         minRole: 3, desc: "Ver todo el staff.",                                        function: adminListCommand },
+  antivpn:     { aliases: [],                    minRole: 3, desc: "Activar/desactivar filtro Anti-VPN. !antivpn on/off",       function: antiVPNCommand },
   // ── Owner ─────────────────────────────────────────────────────────────────
   setadmin:    { aliases: [],                    minRole: 4, desc: "Otorgar Admin. !setadmin #ID",                              function: setAdminCommand },
   removeadmin: { aliases: [],                    minRole: 4, desc: "Remover Admin. !removeadmin #ID",                           function: removeAdminCommand },
