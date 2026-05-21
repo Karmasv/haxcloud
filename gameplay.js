@@ -1,6 +1,29 @@
 // =============================================================================
-//  gameplay.js — Lógica de juego: toques de balón, goles, porteros, estadísticas
+//  gameplay.js — Lógica de juego: toques, goles, porteros, estadísticas y MVP
 // =============================================================================
+
+// MVP Stats por jugador (se reinicia al iniciar cada partido)
+const mvpStats = {};
+
+function initMVPStats(playerId) {
+  if (!mvpStats[playerId]) {
+    mvpStats[playerId] = {
+      goals: 0,
+      assists: 0,
+      saves: 0,
+      shots: 0,
+      touches: 0,
+      ballRecoveries: 0,
+      passesCompleted: 0,
+      passesFailed: 0,
+      keyPasses: 0,
+      dribbling: 0,
+      ownGoals: 0,
+      distanceTraveled: 0,
+      mvpScore: 0,
+    };
+  }
+}
 
 function calculateStadiumVariables() {
   if (!checkStadiumVariable || teamRed.length + teamBlue.length === 0) return;
@@ -73,7 +96,6 @@ function getGoalAttribution(team) {
   return result;
 }
 
-
 function handleGKTeam(team) {
   if (team === 0) return null;
   const arr = team === 1 ? teamRed : teamBlue;
@@ -115,7 +137,6 @@ function getCSString(scores) {
   return t.cs_two(cs[0], cs[1]);
 }
 
-
 function getGametimePlayer(comp) {
   if (!comp) return 0;
   let total = 0;
@@ -146,6 +167,64 @@ function getCSPlayer(comp) {
   return (gk?.player.id === comp.player.id && getCS(game.scores).length > 0) ? 1 : 0;
 }
 
+// ─── MVP: inicializar stats para todos los jugadores al iniciar partido ───
+function resetMVPStats() {
+  const all = room.getPlayerList();
+  for (const p of all) {
+    mvpStats[p.id] = {
+      goals: 0,
+      assists: 0,
+      saves: 0,
+      shots: 0,
+      touches: 0,
+      ballRecoveries: 0,
+      passesCompleted: 0,
+      passesFailed: 0,
+      keyPasses: 0,
+      dribbling: 0,
+      ownGoals: 0,
+      distanceTraveled: 0,
+      mvpScore: 0,
+    };
+  }
+}
+
+// ─── MVP: anunciar top 3 y MVP al final del partido ──────────────────────
+function announceMVP() {
+  const sorted = Object.entries(mvpStats)
+    .filter(([, s]) => s.mvpScore > 0)
+    .sort((a, b) => b[1].mvpScore - a[1].mvpScore);
+
+  if (sorted.length === 0) return;
+
+  const top3 = sorted.slice(0, 3);
+  const medals = ['🥇', '🥈', '🥉'];
+
+  let msg = '🏆 **MVP DEL PARTIDO** 🏆\n';
+  msg += '━━━━━━━━━━━━━━━━━━━━━━\n';
+
+  top3.forEach(([id, stats], index) => {
+    const player = room.getPlayer(parseInt(id));
+    const name = player ? player.name : `ID:${id}`;
+    msg += `${medals[index]} ${name} — ${stats.mvpScore.toFixed(1)} pts\n`;
+    msg += `   ⚽${stats.goals} 🅰️${stats.assists} 🧤${stats.saves} 🔑${stats.keyPasses}\n`;
+  });
+
+  msg += '━━━━━━━━━━━━━━━━━━━━━━\n';
+
+  const mvpId = parseInt(top3[0][0]);
+  const mvpPlayer = room.getPlayer(mvpId);
+  if (mvpPlayer) {
+    msg += `👑 **MVP**: ${mvpPlayer.name}\n`;
+    room.setPlayerAvatar(mvpId, '⭐');
+    setTimeout(() => {
+      if (room.getPlayer(mvpId)) room.setPlayerAvatar(mvpId, null);
+    }, 60000); // El avatar de MVP dura 1 minuto
+  }
+
+  announceAll(msg, 0xffd700, 'bold', 2);
+}
+
 function updatePlayerStats(player, teamNum) {
   const auth = getAuth(player);
   if (!auth) return;
@@ -168,12 +247,11 @@ function updatePlayerStats(player, teamNum) {
   // XP
   const xpGanada = calcularXpPartido(comp, teamNum, lastWinner);
   stats.xp = Math.max(0, (stats.xp ?? 0) + xpGanada);
-  // Session tracking para webhook desconexión
   stats._sessionGoals   = goles;
   stats._sessionAssists = asists;
   stats._sessionXp      = xpGanada;
   saveStats(auth, stats);
-  // Anunciar subida de rango en sala
+  // Anunciar subida de rango
   const rangoActual = getRango(stats.xp);
   const rangoAnterior = getRango(Math.max(0, stats.xp - xpGanada));
   if (rangoActual.index > rangoAnterior.index) {
@@ -182,6 +260,15 @@ function updatePlayerStats(player, teamNum) {
       null, 0xf1c40f, "bold", 1
     );
   }
+
+  // ─── MVP: sumar puntos al jugador ─────────────────────────────────────────
+  initMVPStats(player.id);
+  const mv = mvpStats[player.id];
+  mv.goals += goles;
+  mv.assists += asists;
+  mv.ownGoals += ogs;
+  // El resto de stats (saves, keyPasses, etc.) se suman en onPlayerBallKick y onGameTick
+  mv.mvpScore += goles * 5 + asists * 2 + cs * 3 + (ogs * -1);
 }
 
 function updateStats() {
@@ -195,10 +282,12 @@ function updateStats() {
   if (!enoughPlayers || !enoughTime) return;
   for (const p of teamRedStats)  updatePlayerStats(p, 1);
   for (const p of teamBlueStats) updatePlayerStats(p, 2);
+
+  // ─── Anunciar MVP al final ────────────────────────────────────────────────
+  announceMVP();
 }
 
-
-// Frases de gol: se obtienen del paquete de idioma (t)
+// Frases de gol
 const GOAL_PHRASES_ASSIST = () => t.phrases_assist;
 const GOAL_PHRASES_SOLO   = () => t.phrases_solo;
 const OWN_GOAL_PHRASES    = () => t.phrases_og;
@@ -232,3 +321,48 @@ function getGoalString(team) {
   game.goals.push(new Goal(scores.time, team, goalInfo[0], null));
   return `⚽ ${time} ${goalInfo[0].name}, ${phrase} • ${speed}`;
 }
+
+// ─── MVP: evento de toque de balón ────────────────────────────────────────
+room.onPlayerBallKick = function(player) {
+  initMVPStats(player.id);
+  const mv = mvpStats[player.id];
+
+  // Toque
+  mv.touches++;
+  mv.mvpScore += 0.02;
+
+  // Recuperación (si el último toque fue del equipo rival)
+  if (lastTouches[0] && lastTouches[0].player.team !== player.team) {
+    mv.ballRecoveries++;
+    mv.mvpScore += 0.2;
+  }
+
+  // Pase completado / fallado (lógica simplificada: si el siguiente toque es del mismo equipo, es pase completado)
+  if (lastTouches[0] && lastTouches[0].player.id !== player.id) {
+    if (lastTouches[0].player.team === player.team) {
+      mv.passesCompleted++;
+      mv.mvpScore += 0.2;
+    } else {
+      mv.passesFailed++;
+      mv.mvpScore -= 0.1;
+    }
+  }
+
+  // Key pass (si el balón está en área rival)
+  const ball = room.getBallPosition();
+  if (player.team === 1 && ball.x > 300) {
+    mv.keyPasses++;
+    mv.mvpScore += 0.3;
+  } else if (player.team === 2 && ball.x < -300) {
+    mv.keyPasses++;
+    mv.mvpScore += 0.3;
+  }
+
+  // Dribbling (si el jugador toca el balón dos veces seguidas sin que lo toque otro)
+  if (lastTouches[0] && lastTouches[0].player.id === player.id) {
+    mv.dribbling++;
+    mv.mvpScore += 0.001;
+  }
+
+  // Distancia recorrida (se suma en onGameTick)
+};
