@@ -1,10 +1,32 @@
 // =============================================================================
-//  events.js — Event handlers de HaxBall (Power Bar + Sliding + Gana Sigue)
+//  events.js — Event handlers de HaxBall (Power Bar + Anti-VPN)
 // =============================================================================
 
 room.onPlayerJoin = function(player) {
-  // Almacenamos auth y conn directamente desde el objeto player (gracias al parche)
   authMap.set(player.id, { auth: player.auth, conn: player.conn });
+
+  // --- Filtro Anti-VPN ---
+  if (antiVPNEnabled && player.conn) {
+    const ip = hexToIP(player.conn);
+    checkVPN(ip, player.name).then(result => {
+      if (result.isVPN) {
+        room.kickPlayer(player.id,
+          `🔒 Anti-VPN activo. Tu IP (${ip}) fue detectada como VPN/Proxy (${result.provider}, ${result.country}). Si crees que es un error, contacta en Discord.`,
+          false
+        );
+        sendDiscordJSON(CONFIG.webhooks.baneos, {
+          username: t.wh_name_baneos(),
+          embeds: [{
+            title: '🔒 Bloqueo Anti-VPN',
+            description: `**Jugador:** ${player.name}\n**IP:** ${ip}\n**Proveedor:** ${result.provider}\n**País:** ${result.country}`,
+            color: 0xffa500,
+            timestamp: new Date().toISOString()
+          }]
+        });
+      }
+    });
+  }
+  // --- Fin Anti-VPN ---
 
   // Blacklist
   const banned = blackList.some(([auth]) => auth && auth === player.auth);
@@ -203,14 +225,7 @@ room.onGameStop = function(player) {
   gameState          = 2;
   playSituation      = 0;
   updateTeams();
-
-  // Activar Gana Sigue si el partido terminó naturalmente
-  if (!cancelGameVariable && endGameVariable) {
-    iniciarGanaSigue();
-  } else {
-    handlePlayersStop(player);
-  }
-
+  handlePlayersStop(player);
   handleActivityStop();
 };
 
@@ -262,23 +277,15 @@ room.onGameTick = function() {
   handleAvatarMovement();
   calculateStadiumVariables();
 
-  // Mecánicas avanzadas
+  // Power Bar
   handleAdvancedInput();
 };
 
 // =============================================================================
-//  Mecánicas Avanzadas: Power Bar + Sliding
+//  Mecánica: Power Bar (carga de disparo)
 // =============================================================================
 
-// Mapas de control
-const powerChargeMap = new Map();   // Power Bar
-const slideCooldown = new Map();    // Tiempo hasta que el jugador puede volver a usar slide
-const slideState = new Map();       // Estado actual del slide: { elapsed, dirX, dirY }
-
-// Configuración del Sliding
-const SLIDE_DURATION_TICKS = 12;   // ~200 ms a 60 ticks/s
-const SLIDE_SPEED = 8;             // Impulso base
-const SLIDE_COOLDOWN_MS = 3000;    // 3 segundos
+const powerChargeMap = new Map();
 
 function handleAdvancedInput() {
   const players = room.getPlayerList().filter(p => p.team !== 0);
@@ -287,7 +294,7 @@ function handleAdvancedInput() {
   for (const player of players) {
     if (!player.activity) continue;
 
-    // ========== POWER BAR (carga de disparo) ==========
+    // Power Bar
     const isKicking = (player.activity & 16) !== 0;
 
     if (isKicking) {
@@ -315,78 +322,11 @@ function handleAdvancedInput() {
         powerChargeMap.delete(player.id);
       }
     }
-
-    // ========== SLIDING (W + S simultáneas) ==========
-    const pressingW = (player.activity & 1) !== 0;
-    const pressingS = (player.activity & 2) !== 0;
-    const wantsToSlide = pressingW && pressingS;
-
-    // Si ya está en slide
-    if (slideState.has(player.id)) {
-      const state = slideState.get(player.id);
-      state.elapsed++;
-
-      if (state.elapsed >= SLIDE_DURATION_TICKS || !wantsToSlide) {
-        // Termina el slide: frena al jugador
-        room.setPlayerDiscProperties(player.id, { xspeed: 0, yspeed: 0 });
-        slideState.delete(player.id);
-      } else {
-        // Mantiene la velocidad de slide
-        room.setPlayerDiscProperties(player.id, {
-          xspeed: state.dirX * SLIDE_SPEED,
-          yspeed: state.dirY * SLIDE_SPEED
-        });
-      }
-      continue;
-    }
-
-    // Iniciar slide si presiona W+S y no está en cooldown
-    if (wantsToSlide) {
-      if (slideCooldown.has(player.id) && now < slideCooldown.get(player.id)) {
-        // En cooldown, no hace nada
-        continue;
-      }
-
-      // Obtiene dirección actual del jugador
-      const disc = room.getPlayerDiscProperties(player.id);
-      if (!disc) continue;
-      let dirX = disc.xspeed;
-      let dirY = disc.yspeed;
-      const len = Math.sqrt(dirX * dirX + dirY * dirY);
-      if (len < 0.1) {
-        // Si está parado, desliza hacia abajo por defecto
-        dirX = 0;
-        dirY = 1;
-      } else {
-        dirX /= len;
-        dirY /= len;
-      }
-
-      // Activa el slide
-      slideState.set(player.id, {
-        elapsed: 0,
-        dirX: dirX,
-        dirY: dirY
-      });
-      slideCooldown.set(player.id, now + SLIDE_COOLDOWN_MS);
-      room.sendAnnouncement(
-        "🛼 ¡Slide!",
-        player.id, 0x00ccff, "bold", 1
-      );
-    }
   }
 
-  // Limpieza: eliminar datos de jugadores que ya no están en cancha
+  // Limpieza
   for (const [id] of powerChargeMap) {
     if (!players.some(p => p.id === id)) powerChargeMap.delete(id);
-  }
-  for (const [id] of slideState) {
-    if (!players.some(p => p.id === id)) slideState.delete(id);
-  }
-  for (const [id] of slideCooldown) {
-    if (!players.some(p => p.id === id) && now >= slideCooldown.get(id)) {
-      slideCooldown.delete(id);
-    }
   }
 }
 
