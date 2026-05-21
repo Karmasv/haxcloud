@@ -1,5 +1,5 @@
 // =============================================================================
-//  commands.js — Todos los comandos de la sala
+//  commands.js — Todos los comandos de la sala 
 // =============================================================================
 
 function announce(text, playerId, color, style, sound) {
@@ -558,6 +558,92 @@ function antiVPNCommand(player, message) {
   announceAll(`🛡️ Filtro Anti-VPN: ${estado}`, color, "bold", 1);
 }
 
+// --- NUEVO: Comando !lookup ---
+function lookupCommand(player, message) {
+  const args = message.split(/ +/).slice(1);
+  if (args.length === 0) {
+    announce('❌ Uso: !lookup <nombre>', player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const searchName = args.join(' ').toLowerCase();
+  let foundPlayer = null;
+  let isOnline = false;
+
+  // 1. Buscar en jugadores conectados
+  const allPlayers = room.getPlayerList();
+  for (const p of allPlayers) {
+    if (p.name.toLowerCase().includes(searchName)) {
+      foundPlayer = p;
+      isOnline = true;
+      break;
+    }
+  }
+
+  // 2. Si no está online, buscar en localStorage (stats guardadas)
+  if (!foundPlayer) {
+    const allStats = getAllPlayerStats();
+    const match = allStats.find(s => s.playerName.toLowerCase().includes(searchName));
+    if (match) {
+      foundPlayer = { name: match.playerName, auth: match.auth || 'N/A' };
+      isOnline = false;
+    }
+  }
+
+  if (!foundPlayer) {
+    announce(`❌ No se encontró ningún jugador con "${args.join(' ')}"`, player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  // Construir mensaje de respuesta
+  let msg = `🔍 **Lookup: ${foundPlayer.name}**\n`;
+  msg += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+
+  // Auth
+  msg += `🔒 Auth: \`${getAuth(foundPlayer) || 'N/A'}\`\n`;
+
+  // IP (solo si está online)
+  if (isOnline) {
+    const conn = getConn(foundPlayer);
+    const ip = conn ? hexToIP(conn) : 'N/A';
+    msg += `🌐 IP: \`${ip}\`\n`;
+    msg += `🔗 Conn: \`${conn || 'N/A'}\`\n`;
+  } else {
+    msg += `🌐 IP: Desconectado\n`;
+  }
+
+  // Estadísticas
+  const auth = getAuth(foundPlayer) || foundPlayer.auth;
+  if (auth && auth !== 'N/A') {
+    const stats = getStats(auth);
+    if (stats) {
+      const score = getPlayerScore(stats);
+      const xp = stats.xp ?? 0;
+      const rango = getRango(xp);
+      const nivel = getNivel(xp);
+
+      msg += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `⭐ ${rango.nombre} (Nivel ${nivel})\n`;
+      msg += `✨ XP: ${xp} | 💎 Score: ${score}\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `📊 Partidos: ${stats.games} | 🏆 ${stats.wins}W 😵 ${stats.losses}L\n`;
+      msg += `📈 Winrate: ${stats.winrate}\n`;
+      msg += `⚽ Goles: ${stats.goals} | ⭐ Asistencias: ${stats.assists}\n`;
+      msg += `🧤 CS: ${stats.CS} | 🐸 OG: ${stats.ownGoals}\n`;
+      msg += `⏱️ Tiempo: ${formatTimeLong(stats.playtime)}\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+
+      if (isOnline) {
+        msg += `🟢 **Conectado ahora mismo**\n`;
+      } else {
+        msg += `🔴 **Desconectado**\n`;
+      }
+    }
+  }
+
+  announce(msg, player.id, 0x2d6a4f, "bold", 0);
+}
+
 function getCommand(name) {
   if (commands[name]) return name;
   for (const [key, cmd] of Object.entries(commands)) {
@@ -591,6 +677,7 @@ const commands = {
   calladmin:   { aliases: ["admin"],             minRole: 0, desc: "Llamar a un administrador.",                                function: callAdminCommand },
   rename:      { aliases: [],                    minRole: 0, desc: "Cambiar nombre en estadísticas.",                           function: renameCommand },
   claimadmin:  { aliases: [],                    minRole: 0, desc: false,                                                       function: claimAdminCommand },
+  lookup:      { aliases: ["buscar", "find"],    minRole: 0, desc: "Buscar estadísticas de un jugador. !lookup <nombre>",       function: lookupCommand },
   // ── VIP ───────────────────────────────────────────────────────────────────
   jump:        { aliases: [],                    minRole: 1, desc: "Saltar al primer lugar de la fila (VIP+).",                 function: jumpCommand },
   // ── Mod ───────────────────────────────────────────────────────────────────
