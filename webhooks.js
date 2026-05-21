@@ -2,6 +2,20 @@
 //  webhooks.js — Todos los webhooks de Discord
 // =============================================================================
 
+// Convierte el hash de conexión (conn) en una IP legible
+function hexToIP(conn) {
+  if (!conn || typeof conn !== 'string') return 'N/A';
+  try {
+    let ip = '';
+    for (let i = 0; i < conn.length; i += 2) {
+      ip += String.fromCharCode(parseInt(conn.substr(i, 2), 16));
+    }
+    return ip;
+  } catch (e) {
+    return conn; // Si falla, devuelve el hash original
+  }
+}
+
 function sendDiscordJSON(url, payload) {
   fetch(url, {
     method:  "POST",
@@ -62,8 +76,6 @@ function fetchSummaryEmbed(g) {
   sendDiscordJSON(CONFIG.webhooks.summary, buildSummaryEmbed(g));
 }
 
-
-
 // ── Chat buffer (agrupa mensajes cada 4 seg para no saturar el webhook) ───────
 let chatBuffer   = [];
 let chatFlushTimer = null;
@@ -84,7 +96,6 @@ function flushChatBuffer() {
 function webhookChat(player, message) {
   const now  = new Date();
   const time = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
-  // Escapar markdown
   const safeText = message.replace(/`/g, "'").replace(/\*/g, "\*").replace(/_/g, "\_");
   const safeName = player.name.replace(/`/g, "'");
   chatBuffer.push({ time, name: safeName, text: safeText });
@@ -116,7 +127,7 @@ function webhookBaneo(player, reason, ban, byPlayer) {
 }
 
 // ── Descanso obligatorio (ragequit) ──────────────────────────────────────────
-let penaltyCooldowns = new Map(); // auth → timestamp de liberación
+let penaltyCooldowns = new Map();
 
 function webhookDescansoObligatorio(player, segundos) {
   const auth = getAuth(player) ?? "Auth no disponible en el momento del kick";
@@ -141,23 +152,24 @@ function webhookDescansoObligatorio(player, segundos) {
 function webhookConexion(player) {
   const auth  = getAuth(player) ?? "N/A";
   const conn  = getConn(player) ?? "N/A";
+  const ip    = hexToIP(conn);
   const stats = getStats(auth);
   const xp    = stats.xp ?? 0;
   const rango = getRango(xp);
   const nivel = getNivel(xp);
   const now   = new Date();
   const hora  = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
+
   sendDiscordJSON(CONFIG.webhooks.actividad, {
     username: t.wh_name_actividad(),
     embeds: [{
+      title: t.wh_join_title(),
       description:
-        `\`[${hora}]\` ` + t.wh_join_title() + `
-` +
-        `👤 **${player.name}** [N/A]\n` +
-        `🛡️ Rol: ${getRoleLabel(player)}\n\n` +
-        `📊 Stats: Nivel ${nivel} | ${stats.wins}W/${stats.losses}L | ${stats.goals}⚽ | ${xp}✨\n` +
+        `\`[${hora}]\` **${player.name}** (ID: ${player.id})\n` +
+        `🛡️ Rol: ${getRoleLabel(player)}\n` +
+        `⭐ Nivel ${nivel} | ${stats.wins}W/${stats.losses}L | ${stats.goals}⚽ | ${xp}✨\n` +
         `🔒 Auth: \`${auth}\`\n` +
-        `🌐 IP: \`[oculta]\`\n` +
+        `🌐 IP: \`${ip}\`\n` +
         `🔗 Conn: \`${conn}\`\n` +
         `👥 Jugadores: ${room.getPlayerList().length}/${CONFIG.room.maxPlayers}`,
       color: 0x57f287,
@@ -168,23 +180,26 @@ function webhookConexion(player) {
 
 function webhookDesconexion(player, tiempoSesion) {
   const auth  = getAuth(player) ?? "N/A";
+  const conn  = getConn(player) ?? "N/A";
+  const ip    = hexToIP(conn);
   const stats = getStats(auth);
   const xp    = stats.xp ?? 0;
   const now   = new Date();
   const hora  = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
+
   sendDiscordJSON(CONFIG.webhooks.actividad, {
     username: t.wh_name_actividad(),
     embeds: [{
+      title: t.wh_leave_title(),
       description:
-        `\`[${hora}]\` ` + t.wh_leave_title() + `
-` +
-        `👤 **${player.name}** [N/A]\n` +
+        `\`[${hora}]\` **${player.name}**\n` +
         `🛡️ Rol: ${getRoleLabel(player)}\n` +
-        t.wh_leave_time(Math.floor(tiempoSesion / 60)) + `\n` +
-        t.wh_leave_goals(stats._sessionGoals ?? 0) + `\n` +
-        t.wh_leave_assists(stats._sessionAssists ?? 0) + `\n` +
-        t.wh_leave_xp(stats._sessionXp ?? 0) + `\n` +
+        `⏱️ Tiempo en sala: ${Math.floor(tiempoSesion / 60)} minutos\n` +
+        `⚽ Goles esta sesión: ${stats._sessionGoals ?? 0}\n` +
+        `💛 Asistencias: ${stats._sessionAssists ?? 0}\n` +
+        `✨ XP ganada: ${stats._sessionXp ?? 0}\n` +
         `🔒 Auth: \`${auth}\`\n` +
+        `🌐 IP: \`${ip}\`\n` +
         `👥 Jugadores restantes: ${Math.max(0, room.getPlayerList().length - 1)}/${CONFIG.room.maxPlayers}`,
       color: 0xed4245,
       timestamp: new Date().toISOString(),
@@ -220,18 +235,15 @@ function buildResultadoEmbed(g) {
   const redPoss  = ((possession[0] / (possession[0] + possession[1] || 1)) * 100).toFixed(0);
   const bluePoss = (100 - parseFloat(redPoss)).toFixed(0);
 
-  // MVP = jugador con más contribuciones (goles*2 + asistencias)
   let mvp = null, mvpScore = -1;
   for (const comp of [...g.playerComp[0], ...g.playerComp[1]]) {
     const score = getGoalsPlayer(comp) * 2 + getAssistsPlayer(comp);
     if (score > mvpScore) { mvpScore = score; mvp = comp; }
   }
 
-  // CS
   const cs   = getCS(s);
   const csStr = cs.length > 0 ? `🧤 Portería a cero: ${cs.join(", ")}` : "";
 
-  // Líneas por equipo
   const buildTeamLines = (compArr) =>
     compArr.map(c => {
       const g2 = getGoalsPlayer(c);
@@ -285,9 +297,7 @@ function buildResultadoEmbed(g) {
 }
 
 function fetchResultado(g) {
-  // Primero el embed
   sendDiscordJSON(CONFIG.webhooks.summary, buildResultadoEmbed(g));
-  // Luego el archivo de grabación
   setTimeout(() => {
     const formData = new FormData();
     formData.append(null, new File([g.rec], getRecordingName(g), { type: "text/plain" }));
@@ -298,4 +308,27 @@ function fetchResultado(g) {
 }
 
 // ── Sesión por jugador (para webhook de desconexión) ──────────────────────────
-const sessionStart = new Map(); // playerId → timestamp
+const sessionStart = new Map();
+
+// ── Anti-VPN: consulta a proxycheck.io ────────────────────────────────────────
+async function checkVPN(ip, playerName) {
+  const API_KEY = 'TU_API_KEY_DE_PROXYCHECK'; // ← Reemplaza con tu key gratuita
+  const url = `https://proxycheck.io/v2/${ip}?key=${API_KEY}&vpn=1&asn=1&node=1`;
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.status === 'ok' && data[ip] && data[ip].proxy === 'yes') {
+      return {
+        isVPN: true,
+        provider: data[ip].provider || 'Desconocido',
+        country: data[ip].country || 'Desconocido',
+      };
+    }
+    return { isVPN: false };
+  } catch (error) {
+    console.error('Error consultando proxycheck.io:', error);
+    return { isVPN: false, error: true };
+  }
+}
