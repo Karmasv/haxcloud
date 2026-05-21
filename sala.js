@@ -1,17 +1,16 @@
 'use strict';
 // =============================================================================
-//  sala.js — Factory de sala aislada
+//  sala.js — Factory de sala (versión simplificada para Workers)
 //
-//  Recibe HBInit + config de sala, crea un ctx (scope) completamente aislado
-//  y carga todos los módulos dentro de ese scope.
-//  Cada sala tiene sus propias variables, su propio room, su propio i18n.
+//  Recibe HBInit + config de sala, carga todos los módulos
+//  dentro de este Worker. Ya no usa vm.createContext porque
+//  el aislamiento lo proporciona el Worker Thread.
 // =============================================================================
 
 const fs   = require('fs');
 const path = require('path');
-const vm   = require('vm');
 
-// Leer todos los módulos una sola vez al arrancar (compartido entre salas)
+// Leer todos los módulos una sola vez al cargar el Worker
 const ROOT = __dirname;
 const MODULOS = [
   'classes.js',
@@ -25,12 +24,9 @@ const MODULOS = [
   'webhooks.js',
   'commands.js',
   'events.js',
-].map(nombre => ({
-  nombre,
-  codigo: fs.readFileSync(path.join(ROOT, nombre), 'utf8'),
-}));
+];
 
-// localStorage simulado en Node (Map en memoria, por sala)
+// localStorage simulado en este Worker (Map en memoria)
 function crearLocalStorage() {
   const store = new Map();
   return {
@@ -44,7 +40,7 @@ function crearLocalStorage() {
 }
 
 /**
- * Crear una sala aislada.
+ * Crear una sala.
  * @param {Function} HBInit - Función HBInit de haxball.js
  * @param {Object}   cfg    - Config de la sala (de salas/co.js, etc.)
  * @returns {Object} ctx    - El scope de la sala con room, t(), etc.
@@ -95,75 +91,30 @@ function crearSala(HBInit, cfg) {
     },
   };
 
-  // ── 4. Crear el contexto (ctx) aislado ─────────────────────────────────────
-  // ctx es el "global scope" de esta sala — todos los módulos ven estas vars
-  const ctx = vm.createContext({
-    // API de HaxBall
-    room,
-    HBInit,
+  // ── 4. Variables globales (por sala) ───────────────────────────────────────
+  global.room = room;
+  global.CONFIG = CONFIG;
+  global.t = t;
+  global.localStorage = crearLocalStorage();
 
-    // Traducción
-    t,
+  // Listas de usuarios (por sala)
+  global.ownerList = [];
+  global.adminList = [];
+  global.modList   = [];
+  global.vipList   = [];
+  global.blackList = [];
 
-    // Config
-    CONFIG,
-
-    // Listas de usuarios (por sala)
-    ownerList: [],
-    adminList: [],
-    modList:   [],
-    vipList:   [],
-    blackList: [],
-
-    // localStorage por sala
-    localStorage: crearLocalStorage(),
-
-    // Node globals necesarios
-    console,
-    setTimeout,
-    setInterval,
-    clearTimeout,
-    clearInterval,
-    Date,
-    Math,
-    JSON,
-    Promise,
-    Map,
-    Set,
-    Array,
-    Object,
-    String,
-    Number,
-    Boolean,
-    parseInt,
-    parseFloat,
-    isNaN,
-    Infinity,
-    fetch,
-    File,
-    FormData,
-    URL,
-    URLSearchParams,
-
-    // Identificador de sala (para logs)
-    __SALA_ID__: cfg.id,
-  });
-
-  // ── 5. Cargar cada módulo dentro del ctx ──────────────────────────────────
-  for (const mod of MODULOS) {
+  // ── 5. Cargar módulos en orden ────────────────────────────────────────────
+  for (const nombre of MODULOS) {
     try {
-      const script = new vm.Script(mod.codigo, {
-        filename: `${cfg.id}/${mod.nombre}`,
-        lineOffset: 0,
-      });
-      script.runInContext(ctx);
+      require(path.join(ROOT, nombre));
     } catch (e) {
-      console.error(`[${cfg.id}] Error en ${mod.nombre}:`, e.message);
+      console.error(`[${cfg.id}] Error al cargar ${nombre}:`, e.message);
       throw e;
     }
   }
 
-  // ── 6. Configurar la sala post-carga ──────────────────────────────────────
+  // ── 6. Configurar la sala ─────────────────────────────────────────────────
   room.setScoreLimit(CONFIG.game.scoreLimit);
   room.setTimeLimit(CONFIG.game.timeLimit);
   room.setTeamsLock(CONFIG.game.teamsLocked);
@@ -175,11 +126,11 @@ function crearSala(HBInit, cfg) {
 
   room.onRoomLink = function(link) {
     console.log(`[${cfg.id}] ✅ ${link}`);
-    ctx.__ROOM_LINK__ = link;
   };
 
   console.log(`[${cfg.id}] Módulos cargados (${cfg.lang})`);
-  return ctx;
+
+  return { room, cfg, t, CONFIG };
 }
 
 module.exports = { crearSala };
