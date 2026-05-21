@@ -76,3 +76,5 @@ const voteKickData = {
 
 const emptyPlayer = { id: 0 };
 
+// --- NUEVO: Filtro Anti-VPN ---
+let antiVPNEnabled = false;
