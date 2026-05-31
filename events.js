@@ -151,8 +151,45 @@ room.onPlayerChat = function(player, message) {
   // Muteado — bloquear mensaje
   if (muteArray.getByPlayerId(player.id)) return false;
 
-  // Webhook chat-sala
-  webhookChat(player, message);
+  // ─── Personalización: prefijo y color de nombre ─────────────────────────
+  let displayName = player.name;
+  let chatColor = null;
+  
+  const auth = getAuth(player);
+  if (auth) {
+    try {
+      const storage = require('./storage');
+      
+      // Prefijo equipado
+      const prefijo = storage.getEquipped(auth, 'prefijo');
+      if (prefijo) {
+        displayName = `[${prefijo}] ${player.name}`;
+      }
+      
+      // Color de nombre equipado
+      const vcolor = storage.getEquipped(auth, 'vcolor');
+      if (vcolor) {
+        const colorMap = {
+          red: 0xff4c4c, blue: 0x62cbff, green: 0x57f287,
+          yellow: 0xf1c40f, purple: 0x9b59b6, orange: 0xffa500,
+          cyan: 0x00ffff, white: 0xffffff
+        };
+        chatColor = colorMap[vcolor] || null;
+      }
+    } catch (e) {
+      // Si storage no está disponible, ignorar personalización
+    }
+  }
+  
+  // Si no hay color personalizado, usar el color por defecto según equipo
+  if (!chatColor) {
+    chatColor = player.team === 1 ? 0xff4c4c : player.team === 2 ? 0x62cbff : 0xe2e2e2;
+  }
+  // ─── Fin personalización ─────────────────────────────────────────────────
+
+  // Webhook chat-sala (con nombre personalizado)
+  const playerWithDisplay = { ...player, name: displayName };
+  webhookChat(playerWithDisplay, message);
 
   const words = message.split(/ +/);
 
@@ -173,10 +210,24 @@ room.onPlayerChat = function(player, message) {
   }
 
   // Chat de equipo
-  if (words[0].toLowerCase() === "t") { teamChat(player, message); return false; }
+  if (words[0].toLowerCase() === "t") { 
+    const teamMsg = message.split(/ +/).slice(1).join(" ");
+    const emoji = player.team === 1 ? "🔴" : "🔵";
+    sendAnnouncementTeam(`${emoji} [TEAM] ${displayName}: ${teamMsg}`, getTeamArray(player.team, true), chatColor, "bold", 1);
+    return false; 
+  }
 
   // Mensaje directo
-  if (words[0].startsWith("@@")) { playerChat(player, message); return false; }
+  if (words[0].startsWith("@@")) { 
+    const parts = message.split(/ +/);
+    const target = playersAll.find(p => p.name.replaceAll(" ", "_") === parts[0].substring(2));
+    if (!target) { announce(t.cmd_invalid_player(), player.id, 0xed5050, "bold", 1); return false; }
+    if (target.id === player.id) { announce(t.cmd_no_self_msg(), player.id, 0xed5050, "bold", 1); return false; }
+    const body = parts.slice(1).join(" ");
+    announce(`💌 [${displayName} → ${target.name}] ${body}`, player.id, chatColor, "bold", 1);
+    announce(`💌 [${displayName} → Tú] ${body}`, target.id, chatColor, "bold", 1);
+    return false; 
+  }
 
   // Choose mode
   if (chooseMode && teamRed.length && teamBlue.length) {
@@ -185,6 +236,10 @@ room.onPlayerChat = function(player, message) {
 
   // Slow mode
   if (slowMode > 0 && slowModeFunction(player)) return false;
+
+  // Chat público normal
+  announce(`${displayName}: ${message}`, null, chatColor, "bold", 1);
+  return false;
 };
 
 room.onGameStart = function(player) {
