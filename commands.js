@@ -1,5 +1,5 @@
 // =============================================================================
-//  commands.js — Todos los comandos de la sala (con economía)
+//  commands.js — Todos los comandos de la sala (con economía y tienda)
 // =============================================================================
 
 function announce(text, playerId, color, style, sound) {
@@ -161,7 +161,7 @@ function showStatsCommand(player) {
 
 function resetStatsCommand(player) {
   const auth = getAuth(player);
-  // En SQLite no borramos, solo reiniciamos (opcional)
+  // En SQLite no borramos, solo reiniciamos
   const stats = getStats(auth);
   stats.games = 0; stats.wins = 0; stats.losses = 0;
   stats.goals = 0; stats.assists = 0; stats.cs = 0;
@@ -553,14 +553,14 @@ function dailyCommand(player) {
   storage.createPlayer(auth, player.name);
 
   const last = storage.getLastDaily(auth);
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const today = new Date().toISOString().split('T')[0];
 
   if (last === today) {
     announce('⏳ Ya reclamaste tu recompensa diaria hoy. Vuelve mañana.', player.id, 0xffa500, 'bold', 1);
     return;
   }
 
-  const coins = 20 + Math.floor(Math.random() * 11); // 20-30 monedas
+  const coins = 20 + Math.floor(Math.random() * 11);
   storage.addCoins(auth, coins);
   storage.setLastDaily(auth, today);
 
@@ -626,6 +626,126 @@ function transferirCommand(player, message) {
 
   announce(`💸 Transferiste ${amount} EC a ${target.name}.`, player.id, 0x00ff00, 'bold', 1);
   announce(`💸 ${player.name} te ha transferido ${amount} EC.`, target.id, 0x00ff00, 'bold', 1);
+}
+
+// --- Tienda y Personalización ---
+function tiendaCommand(player) {
+  const storage = require('./storage');
+  const items = storage.getShopItems();
+  
+  let msg = '🛒 **Tienda HaxCloud**\n';
+  msg += '━━━━━━━━━━━━━━━━━━━━━━\n';
+  
+  items.forEach((item, i) => {
+    msg += `${i + 1}. ${item.name} — ${item.price} EC\n`;
+    msg += `   📝 ${item.desc}\n`;
+    msg += `   ⌨️ !comprar ${item.type}${item.type === 'prefijo' ? ' <texto>' : item.type === 'vcolor' ? ' <color>' : ''}\n\n`;
+  });
+  
+  msg += '💡 Usa !comprar <tipo> <valor> para adquirir un item.';
+  announce(msg, player.id, 0xffd700, 'bold', 1);
+}
+
+function comprarCommand(player, message) {
+  const auth = getAuth(player);
+  if (!auth) {
+    announce('❌ No se pudo obtener tu cuenta.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  const args = message.split(/ +/).slice(1);
+  if (args.length < 1) {
+    announce('❌ Uso: !comprar <tipo> [valor]\nTipos: vcolor, prefijo, vipavatar', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  const storage = require('./storage');
+  storage.createPlayer(auth, player.name);
+  
+  const itemType = args[0].toLowerCase();
+  const shopItems = storage.getShopItems();
+  const shopItem = shopItems.find(i => i.type === itemType);
+  
+  if (!shopItem) {
+    announce('❌ Item no encontrado. Usa !tienda para ver los disponibles.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  let itemValue = null;
+  if (itemType === 'vcolor') {
+    if (args.length < 2) {
+      announce('❌ Debes especificar un color. Ej: !comprar vcolor red', player.id, 0xed5050, 'bold', 1);
+      return;
+    }
+    const validColors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'cyan', 'white'];
+    itemValue = args[1].toLowerCase();
+    if (!validColors.includes(itemValue)) {
+      announce('❌ Color inválido. Colores disponibles: ' + validColors.join(', '), player.id, 0xed5050, 'bold', 1);
+      return;
+    }
+  } else if (itemType === 'prefijo') {
+    if (args.length < 2) {
+      announce('❌ Debes escribir un prefijo. Ej: !comprar prefijo [PRO]', player.id, 0xed5050, 'bold', 1);
+      return;
+    }
+    itemValue = args.slice(1).join(' ').substring(0, 10);
+  } else if (itemType === 'vipavatar') {
+    const avatars = ['⭐', '🌟', '💎', '👑', '🔥', '⚡', '🎯', '💜'];
+    itemValue = avatars[Math.floor(Math.random() * avatars.length)];
+  }
+
+  if (itemType === 'vipavatar') {
+    const existing = storage.getPlayerItem(auth, 'vipavatar');
+    if (existing) {
+      storage.removeItem(existing.id);
+    }
+  }
+
+  const coins = storage.getCoins(auth);
+  if (coins < shopItem.price) {
+    announce(`❌ No tienes suficientes EC. Necesitas ${shopItem.price} EC y tienes ${coins} EC.`, player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  storage.removeCoins(auth, shopItem.price);
+  storage.addItem(auth, itemType, itemValue);
+  storage.equipItem(auth, itemType, itemValue);
+
+  announce(`✅ ¡Compraste **${shopItem.name}** por ${shopItem.price} EC!`, player.id, 0x00ff00, 'bold', 1);
+  
+  if (itemType === 'prefijo') {
+    announce(`📛 Tu nuevo prefijo es: [${itemValue}]`, player.id, 0xffd700, 'bold', 1);
+  } else if (itemType === 'vcolor') {
+    announce(`🎨 Tu color de nombre ahora es: ${itemValue}`, player.id, 0xffd700, 'bold', 1);
+  }
+}
+
+function inventarioCommand(player) {
+  const auth = getAuth(player);
+  if (!auth) {
+    announce('❌ No se pudo obtener tu cuenta.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  const storage = require('./storage');
+  storage.createPlayer(auth, player.name);
+  const items = storage.getInventory(auth);
+  
+  if (items.length === 0) {
+    announce('🎒 Tu inventario está vacío. Usa !tienda para comprar items.', player.id, 0xffa500, 'bold', 1);
+    return;
+  }
+
+  let msg = '🎒 **Tu Inventario**\n';
+  msg += '━━━━━━━━━━━━━━━━━━━━━━\n';
+  
+  items.forEach((item, i) => {
+    const equipped = item.equipped ? ' ✅ (Equipado)' : '';
+    const expires = item.expires_at ? ` | Expira: ${new Date(item.expires_at).toLocaleDateString()}` : '';
+    msg += `${i + 1}. ${item.item_type}: ${item.item_value}${equipped}${expires}\n`;
+  });
+
+  announce(msg, player.id, 0xffd700, 'bold', 1);
 }
 
 // --- Anti-VPN ---
@@ -979,6 +1099,9 @@ const commands = {
   daily:       { aliases: ["recompensa"],        minRole: 0, desc: "Reclamar tu recompensa diaria de Energy Credits.",            function: dailyCommand },
   balance:     { aliases: ["monedas", "creditos"], minRole: 0, desc: "Ver tu balance de Energy Credits.",                         function: balanceCommand },
   transferir:  { aliases: ["enviar", "pagar"],   minRole: 0, desc: "Transferir Energy Credits a otro jugador. !transferir #ID <cantidad>", function: transferirCommand },
+  tienda:      { aliases: ["shop"],              minRole: 0, desc: "Ver la tienda de items.",                                  function: tiendaCommand },
+  comprar:     { aliases: ["buy"],               minRole: 0, desc: "Comprar un item de la tienda. !comprar <tipo> [valor]",    function: comprarCommand },
+  inventario:  { aliases: ["inventory", "mochila"], minRole: 0, desc: "Ver tu inventario de items comprados.",                  function: inventarioCommand },
   // ── VIP ───────────────────────────────────────────────────────────────────
   jump:        { aliases: [],                    minRole: 1, desc: "Saltar al primer lugar de la fila (VIP+).",                 function: jumpCommand },
   // ── Mod ───────────────────────────────────────────────────────────────────
