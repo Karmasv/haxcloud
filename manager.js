@@ -1,19 +1,13 @@
 'use strict';
 // =============================================================================
-//  manager.js — Gestor multi-sala Liga Promeriga (con Worker Threads)
-//
-//  Cada sala corre en su propio Worker con límites de memoria.
-//  Si un Worker se cae, se reinicia automáticamente.
-//
-//  Uso:
-//    node --expose-gc manager.js
-//    PAISES=co,cr node --expose-gc manager.js
-//    SALAS=co-x1,us-x3 node --expose-gc manager.js
+//  manager.js — Gestor multi-sala con Worker Threads y servidor HTTP
 // =============================================================================
 
 const { Worker } = require('worker_threads');
 const path = require('path');
+const http = require('http');
 
+// Cargar configuraciones de salas
 const TODAS_LAS_SALAS = [
   ...require('./salas/co'),
   ...require('./salas/cr'),
@@ -23,6 +17,10 @@ const TODAS_LAS_SALAS = [
 
 const DELAY_MS = parseInt(process.env.DELAY || '10000');
 const salasActivas = new Map(); // id → { worker, cfg }
+
+// Mapa temporal para códigos de registro (código → { auth, workerId })
+const registrationCodes = new Map();
+const CODE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutos
 
 function filtrarSalas() {
   const paises = process.env.PAISES?.split(',').map(s => s.trim());
@@ -41,7 +39,7 @@ function iniciarSala(cfg, intento = 1) {
     const worker = new Worker(path.join(__dirname, 'worker.js'), {
       workerData: cfg,
       resourceLimits: {
-        maxOldGenerationSizeMb: 45, // Heap máximo por sala
+        maxOldGenerationSizeMb: 45,
         maxYoungGenerationSizeMb: 8,
       },
     });
@@ -53,8 +51,14 @@ function iniciarSala(cfg, intento = 1) {
       } else if (msg.type === 'error') {
         console.error(`[${cfg.id}] ❌ ${msg.message}`);
       } else if (msg.type === 'stats') {
-        // Log silencioso de métricas si se desea
-        // console.log(`[${cfg.id}] RAM: ${msg.ram}MB | Jugadores: ${msg.players}`);
+        // Métricas (opcional)
+      } else if (msg.type === 'registerCode') {
+        // Worker envía un nuevo código de registro
+        registrationCodes.set(msg.code, {
+          auth: msg.auth,
+          workerId: msg.workerId,
+          timestamp: Date.now(),
+        });
       }
     });
 
@@ -69,15 +73,12 @@ function iniciarSala(cfg, intento = 1) {
         setTimeout(() => iniciarSala(cfg, intento + 1), RETRY_DELAY);
       } else if (code !== 0) {
         console.error(`[${cfg.id}] ⛔ Sin más intentos.`);
-      } else {
-        console.log(`[${cfg.id}] Worker finalizado limpiamente.`);
       }
     });
 
   } catch (err) {
     console.error(`[${cfg.id}] ❌ Error al crear Worker: ${err.message}`);
     if (intento < MAX_INTENTOS) {
-      console.log(`[${cfg.id}] Reintentando en ${RETRY_DELAY / 1000}s...`);
       setTimeout(() => iniciarSala(cfg, intento + 1), RETRY_DELAY);
     } else {
       console.error(`[${cfg.id}] ⛔ Sin más intentos.`);
@@ -85,6 +86,66 @@ function iniciarSala(cfg, intento = 1) {
   }
 }
 
+// ─── Servidor HTTP para el bot de Discord ─────────────────────────────────
+const server = http.createServer((req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+
+  if (req.method === 'POST' && req.url === '/vincular') {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const { code, discord_id } = JSON.parse(body);
+        const entry = registrationCodes.get(code);
+
+        if (!entry) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ success: false, message: 'Código inválido o expirado.' }));
+          return;
+        }
+
+        if (Date.now() - entry.timestamp > CODE_EXPIRY_MS) {
+          registrationCodes.delete(code);
+          res.writeHead(400);
+          res.end(JSON.stringify({ success: false, message: 'Código expirado.' }));
+          return;
+        }
+
+        const sala = salasActivas.get(entry.workerId);
+        if (!sala || !sala.worker) {
+          registrationCodes.delete(code);
+          res.writeHead(500);
+          res.end(JSON.stringify({ success: false, message: 'Sala no disponible.' }));
+          return;
+        }
+
+        sala.worker.postMessage({
+          type: 'confirmRegistration',
+          auth: entry.auth,
+          discord_id,
+        });
+
+        registrationCodes.delete(code);
+
+        res.writeHead(200);
+        res.end(JSON.stringify({ success: true, playerName: entry.auth }));
+
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ success: false, message: 'Error al procesar la solicitud.' }));
+      }
+    });
+  } else {
+    res.writeHead(404);
+    res.end(JSON.stringify({ success: false, message: 'Ruta no encontrada.' }));
+  }
+});
+
+server.listen(3456, () => {
+  console.log('🌐 Servidor HTTP de registro escuchando en puerto 3456');
+});
+
+// ─── Inicio del manager ──────────────────────────────────────────────────
 async function main() {
   const salas       = filtrarSalas();
   const sinToken    = salas.filter(s => !s.token || s.token.startsWith('TOKEN_'));
@@ -101,7 +162,6 @@ async function main() {
     process.exit(1);
   }
 
-  // Ya no necesitamos inicializar HaxballJS aquí; cada Worker lo hace.
   salasValidas.forEach((cfg, i) => {
     setTimeout(() => iniciarSala(cfg), i * DELAY_MS);
   });
@@ -112,12 +172,22 @@ async function main() {
     const heap = Math.round(mem.heapUsed / 1024 / 1024);
     console.log(`📊 [${new Date().toLocaleTimeString()}] ${rss}MB RSS | ${heap}MB Heap | ${salasActivas.size}/${salasValidas.length} salas`);
   }, 5 * 60 * 1000);
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [code, entry] of registrationCodes) {
+      if (now - entry.timestamp > CODE_EXPIRY_MS) {
+        registrationCodes.delete(code);
+      }
+    }
+  }, 60_000);
 }
 
 process.on('uncaughtException',  (err)    => console.error(`💥 uncaughtException: ${err.message}`));
 process.on('unhandledRejection', (reason) => console.error(`💥 unhandledRejection:`, reason));
 process.on('SIGINT', () => {
-  console.log(`\n🛑 Cerrando workers...`);
+  console.log(`\n🛑 Cerrando workers y servidor HTTP...`);
+  server.close();
   for (const [id, { worker }] of salasActivas) {
     worker.terminate();
   }
