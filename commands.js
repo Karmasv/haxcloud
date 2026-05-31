@@ -1,5 +1,5 @@
 // =============================================================================
-//  commands.js — Todos los comandos de la sala (con sociales y strikes)
+//  commands.js — Todos los comandos de la sala (con economía)
 // =============================================================================
 
 function announce(text, playerId, color, style, sound) {
@@ -161,7 +161,12 @@ function showStatsCommand(player) {
 
 function resetStatsCommand(player) {
   const auth = getAuth(player);
-  localStorage.removeItem(auth);
+  // En SQLite no borramos, solo reiniciamos (opcional)
+  const stats = getStats(auth);
+  stats.games = 0; stats.wins = 0; stats.losses = 0;
+  stats.goals = 0; stats.assists = 0; stats.cs = 0;
+  stats.own_goals = 0; stats.playtime = 0; stats.xp = 0;
+  saveStats(auth, stats);
   announce(t.stats_reset(), player.id, 0xffefd6, "bold", 1);
 }
 
@@ -536,6 +541,93 @@ function xpCommand(player) {
   );
 }
 
+// --- Economía: Daily, Balance, Transferir ---
+function dailyCommand(player) {
+  const auth = getAuth(player);
+  if (!auth) {
+    announce('❌ No se pudo obtener tu cuenta.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  const storage = require('./storage');
+  storage.createPlayer(auth, player.name);
+
+  const last = storage.getLastDaily(auth);
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+  if (last === today) {
+    announce('⏳ Ya reclamaste tu recompensa diaria hoy. Vuelve mañana.', player.id, 0xffa500, 'bold', 1);
+    return;
+  }
+
+  const coins = 20 + Math.floor(Math.random() * 11); // 20-30 monedas
+  storage.addCoins(auth, coins);
+  storage.setLastDaily(auth, today);
+
+  announce(`💰 **Recompensa Diaria**\nRecibiste ${coins} Energy Credits. ¡Vuelve mañana por más!`, player.id, 0xffd700, 'bold', 1);
+}
+
+function balanceCommand(player) {
+  const auth = getAuth(player);
+  if (!auth) {
+    announce('❌ No se pudo obtener tu cuenta.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  const storage = require('./storage');
+  storage.createPlayer(auth, player.name);
+  const coins = storage.getCoins(auth);
+
+  announce(`💰 **Balance**\nTienes ${coins} Energy Credits.`, player.id, 0xffd700, 'bold', 1);
+}
+
+function transferirCommand(player, message) {
+  const auth = getAuth(player);
+  if (!auth) {
+    announce('❌ No se pudo obtener tu cuenta.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  const args = message.split(/ +/).slice(1);
+  if (args.length < 2) {
+    announce('❌ Uso: !transferir #ID <cantidad>', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  const targetId = parseInt(args[0].startsWith('#') ? args[0].slice(1) : args[0]);
+  const amount = parseInt(args[1]);
+
+  if (isNaN(targetId) || isNaN(amount) || amount <= 0) {
+    announce('❌ ID o cantidad inválidos.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  const target = room.getPlayer(targetId);
+  if (!target) {
+    announce('❌ Jugador no encontrado.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  const targetAuth = getAuth(target);
+  if (!targetAuth) {
+    announce('❌ El jugador no tiene cuenta.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  const storage = require('./storage');
+  storage.createPlayer(auth, player.name);
+  storage.createPlayer(targetAuth, target.name);
+
+  const success = storage.transferCoins(auth, targetAuth, amount);
+  if (!success) {
+    announce('❌ No tienes suficientes Energy Credits.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  announce(`💸 Transferiste ${amount} EC a ${target.name}.`, player.id, 0x00ff00, 'bold', 1);
+  announce(`💸 ${player.name} te ha transferido ${amount} EC.`, target.id, 0x00ff00, 'bold', 1);
+}
+
 // --- Anti-VPN ---
 function antiVPNCommand(player, message) {
   const args = message.split(/ +/).slice(1);
@@ -694,7 +786,7 @@ const memideFrases = [
 ];
 
 function memideCommand(player) {
-  const medida = Math.floor(Math.random() * 20) + 5; // 5 a 24 cm
+  const medida = Math.floor(Math.random() * 20) + 5;
   const frase = memideFrases[Math.floor(Math.random() * memideFrases.length)]
     .replace("[name]", player.name)
     .replace("[num]", medida);
@@ -748,7 +840,7 @@ function eightBallCommand(player, message) {
 // --- Sistema de Strikes ---
 function strikePlayerCommand(player, message) {
   const role = getRole(player);
-  if (role < 2) { // Mod+ (minRole 2)
+  if (role < 2) {
     announce(t.cmd_no_perm(), player.id, 0xed5050, "bold", 1);
     return;
   }
@@ -770,12 +862,10 @@ function strikePlayerCommand(player, message) {
   const currentStrikes = (playerStrikes.get(target.id) || 0) + 1;
   playerStrikes.set(target.id, currentStrikes);
 
-  // Avatar según strikes
   if (currentStrikes === 1) {
     room.setPlayerAvatar(target.id, "❗");
   } else if (currentStrikes === 2) {
     room.setPlayerAvatar(target.id, "🟨");
-    // Silenciar por 60 segundos
     muteArray.getByPlayerId(target.id)?.remove();
     const mp = new MutePlayer(target.name, target.id, getAuth(target));
     mp.setDuration(1);
@@ -886,6 +976,9 @@ const commands = {
   memide:      { aliases: ["medir"],             minRole: 0, desc: "Descubre cuánto te mide (con humor).",                      function: memideCommand },
   mua:         { aliases: ["beso"],              minRole: 0, desc: "Mándale un beso virtual a un jugador. !mua #ID",            function: muaCommand },
   "8ball":     { aliases: ["bola8", "magic8"],   minRole: 0, desc: "Pregúntale a la bola mágica. !8ball <pregunta>",           function: eightBallCommand },
+  daily:       { aliases: ["recompensa"],        minRole: 0, desc: "Reclamar tu recompensa diaria de Energy Credits.",            function: dailyCommand },
+  balance:     { aliases: ["monedas", "creditos"], minRole: 0, desc: "Ver tu balance de Energy Credits.",                         function: balanceCommand },
+  transferir:  { aliases: ["enviar", "pagar"],   minRole: 0, desc: "Transferir Energy Credits a otro jugador. !transferir #ID <cantidad>", function: transferirCommand },
   // ── VIP ───────────────────────────────────────────────────────────────────
   jump:        { aliases: [],                    minRole: 1, desc: "Saltar al primer lugar de la fila (VIP+).",                 function: jumpCommand },
   // ── Mod ───────────────────────────────────────────────────────────────────
