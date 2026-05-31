@@ -1,5 +1,5 @@
 // =============================================================================
-//  commands.js — Todos los comandos de la sala (con !register y !lookup)
+//  commands.js — Todos los comandos de la sala (con sociales y strikes)
 // =============================================================================
 
 function announce(text, playerId, color, style, sound) {
@@ -48,6 +48,7 @@ function printRankings(stat, playerId = null) {
   }
 
   const icons  = { elo: "💎", goals: "⚽", assists: "⭐", wins: "🏆", losses: "😵", cs: "🧤", playtime: "⏱️" };
+  const icon   = icons[stat] ?? "💐";
   const header = t.top_header();
   const footer = t.top_footer();
   const colors = [0x52b788, 0x40916c, 0x2d6a4f, 0x1b4332, 0x081c15];
@@ -535,6 +536,7 @@ function xpCommand(player) {
   );
 }
 
+// --- Anti-VPN ---
 function antiVPNCommand(player, message) {
   const args = message.split(/ +/).slice(1);
   const allowed = getRole(player) >= 3;
@@ -556,6 +558,7 @@ function antiVPNCommand(player, message) {
   announceAll(`🛡️ Filtro Anti-VPN: ${estado}`, color, "bold", 1);
 }
 
+// --- Lookup ---
 function lookupCommand(player, message) {
   const args = message.split(/ +/).slice(1);
   if (args.length === 0) {
@@ -634,7 +637,7 @@ function lookupCommand(player, message) {
   announce(msg, player.id, 0x2d6a4f, "bold", 0);
 }
 
-// --- NUEVO: Comando !register (vinculación con Discord) ---
+// --- Registro vía Discord ---
 function registerCommand(player) {
   const auth = getAuth(player);
   if (!auth) {
@@ -644,7 +647,6 @@ function registerCommand(player) {
 
   const code = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-  // Enviar código al manager a través del worker
   if (typeof parentPort !== 'undefined' && parentPort) {
     parentPort.postMessage({
       type: 'registerCode',
@@ -652,14 +654,6 @@ function registerCommand(player) {
       auth,
       workerId: CONFIG.room?.name || 'unknown',
     });
-  } else {
-    // Si no hay parentPort (modo standalone sin workers), mostrar solo el código
-    announce(
-      `ℹ️ Modo standalone: El código es **${code}**\n` +
-      `En el futuro, esto se validará automáticamente.`,
-      player.id, 0xffa135, "bold", 1
-    );
-    return;
   }
 
   announce(
@@ -671,6 +665,186 @@ function registerCommand(player) {
     `Este código expirará en 5 minutos.`,
     player.id, 0x2d6a4f, "bold", 1
   );
+}
+
+// --- Comandos Sociales ---
+const chistes = [
+  "¿Qué hace una abeja en el gimnasio? ¡Zum-ba!",
+  "¿Por qué los pájaros no usan Facebook? Porque ya tienen Twitter.",
+  "¿Qué le dice un semáforo a otro? No me mires, me estoy cambiando.",
+  "¿Cuál es el colmo de un electricista? Tener un hijo que le salga corriente.",
+  "¿Qué le dice una iguana a su hermana gemela? Somos iguanitas.",
+  "¿Por qué el libro de matemáticas estaba triste? Porque tenía demasiados problemas.",
+  "¿Qué hace una impresora en el gimnasio? ¡Imprime músculos!",
+  "¿Cuál es el animal más antiguo? La cebra, porque está en blanco y negro."
+];
+
+function chisteCommand(player) {
+  const chiste = chistes[Math.floor(Math.random() * chistes.length)];
+  announce(`😆 **Chiste:** ${chiste}`, null, 0xffd700, "bold", 2);
+}
+
+const memideFrases = [
+  "A [name] le mide la picha [num] cm. ¡Felicidades, campeón!",
+  "[name] reporta [num] cm. La ciencia está impresionada.",
+  "Según estudios confiables, a [name] le mide [num] cm.",
+  "Datos oficiales: [name] tiene [num] cm de pura potencia.",
+  "Dicen que [name] presume de [num] cm. Nadie lo ha comprobado.",
+  "El comité científico ha determinado que [name] tiene [num] cm."
+];
+
+function memideCommand(player) {
+  const medida = Math.floor(Math.random() * 20) + 5; // 5 a 24 cm
+  const frase = memideFrases[Math.floor(Math.random() * memideFrases.length)]
+    .replace("[name]", player.name)
+    .replace("[num]", medida);
+  announce(`📏 ${frase}`, null, 0xff69b4, "bold", 2);
+}
+
+function muaCommand(player, message) {
+  const args = message.split(/ +/).slice(1);
+  if (args.length === 0) {
+    announce("❌ Uso: !mua @ID", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+  const targetId = parseInt(args[0].startsWith("#") ? args[0].slice(1) : args[0]);
+  const target = room.getPlayer(targetId);
+  if (!target) {
+    announce("❌ Jugador no encontrado.", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+  announce(`💋 **${player.name}** le manda un beso a **${target.name}**!`, null, 0xff69b4, "bold", 1);
+  room.setPlayerAvatar(player.id, "💋");
+  room.setPlayerAvatar(target.id, "💋");
+  setTimeout(() => {
+    if (room.getPlayer(player.id)) room.setPlayerAvatar(player.id, null);
+    if (room.getPlayer(target.id)) room.setPlayerAvatar(target.id, null);
+  }, 3000);
+}
+
+const magicBallAnswers = [
+  "Sí, definitivamente.",
+  "No cuentes con ello.",
+  "Pregunta de nuevo más tarde.",
+  "Mi respuesta es no.",
+  "Sin duda alguna.",
+  "Las estrellas dicen que sí.",
+  "Mejor no te lo digo ahora.",
+  "Mis fuentes dicen que sí.",
+  "Mis fuentes dicen que no.",
+  "No tengo ni idea, la verdad."
+];
+
+function eightBallCommand(player, message) {
+  const pregunta = message.split(/ +/).slice(1).join(" ");
+  if (!pregunta) {
+    announce("❌ Uso: !8ball <pregunta>", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+  const respuesta = magicBallAnswers[Math.floor(Math.random() * magicBallAnswers.length)];
+  announce(`🎱 ${player.name} pregunta: "${pregunta}"\n🔮 Respuesta: **${respuesta}**`, null, 0x9370db, "bold", 2);
+}
+
+// --- Sistema de Strikes ---
+function strikePlayerCommand(player, message) {
+  const role = getRole(player);
+  if (role < 2) { // Mod+ (minRole 2)
+    announce(t.cmd_no_perm(), player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const args = message.split(/ +/).slice(1);
+  if (args.length < 1) {
+    announce("❌ Uso: !strikeplayer #ID [motivo]", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const targetId = parseInt(args[0].startsWith("#") ? args[0].slice(1) : args[0]);
+  const target = room.getPlayer(targetId);
+  if (!target) {
+    announce("❌ Jugador no encontrado.", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const motivo = args.slice(1).join(" ") || "Sin motivo especificado";
+  const currentStrikes = (playerStrikes.get(target.id) || 0) + 1;
+  playerStrikes.set(target.id, currentStrikes);
+
+  // Avatar según strikes
+  if (currentStrikes === 1) {
+    room.setPlayerAvatar(target.id, "❗");
+  } else if (currentStrikes === 2) {
+    room.setPlayerAvatar(target.id, "🟨");
+    // Silenciar por 60 segundos
+    muteArray.getByPlayerId(target.id)?.remove();
+    const mp = new MutePlayer(target.name, target.id, getAuth(target));
+    mp.setDuration(1);
+  } else if (currentStrikes >= 3) {
+    room.setPlayerAvatar(target.id, "🟥");
+    announceAll(`🚨 ${target.name} ha acumulado 3 strikes y fue expulsado.`, 0xff0000, "bold", 1);
+    room.kickPlayer(target.id, "Has acumulado 3 strikes. Mejora tu comportamiento.", false);
+    playerStrikes.delete(target.id);
+    return;
+  }
+
+  announceAll(
+    `⚠️ **Strike ${currentStrikes}/3** para ${target.name}.\n📝 Motivo: ${motivo}`,
+    0xffa500, "bold", 1
+  );
+}
+
+function nostrikePlayerCommand(player, message) {
+  const role = getRole(player);
+  if (role < 2) {
+    announce(t.cmd_no_perm(), player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const args = message.split(/ +/).slice(1);
+  if (args.length < 1) {
+    announce("❌ Uso: !nostrikeplayer #ID", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const targetId = parseInt(args[0].startsWith("#") ? args[0].slice(1) : args[0]);
+  const target = room.getPlayer(targetId);
+  if (!target) {
+    announce("❌ Jugador no encontrado.", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const currentStrikes = playerStrikes.get(target.id) || 0;
+  if (currentStrikes <= 0) {
+    announce("❌ El jugador no tiene strikes para quitar.", player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  playerStrikes.set(target.id, currentStrikes - 1);
+  if (currentStrikes - 1 === 0) {
+    room.setPlayerAvatar(target.id, null);
+  } else if (currentStrikes - 1 === 1) {
+    room.setPlayerAvatar(target.id, "❗");
+  } else if (currentStrikes - 1 === 2) {
+    room.setPlayerAvatar(target.id, "🟨");
+  }
+
+  announceAll(`✅ Se removió un strike de ${target.name}. Ahora tiene ${currentStrikes - 1}/3.`, 0x00ff00, "bold", 1);
+}
+
+function showStrikesCommand(player) {
+  if (playerStrikes.size === 0) {
+    announce("✅ No hay strikes activos en esta sala.", player.id, 0x00ff00, "bold", 1);
+    return;
+  }
+
+  let msg = "📊 **Strikes Activos**\n━━━━━━━━━━━━━━━━━━\n";
+  for (const [id, count] of playerStrikes) {
+    const p = room.getPlayer(id);
+    const name = p ? p.name : `ID: ${id}`;
+    const icon = count === 1 ? "❗" : count === 2 ? "🟨" : "🟥";
+    msg += `${icon} ${name}: ${count}/3 strikes\n`;
+  }
+  announce(msg, player.id, 0xffa500, "bold", 1);
 }
 
 function getCommand(name) {
@@ -707,7 +881,11 @@ const commands = {
   rename:      { aliases: [],                    minRole: 0, desc: "Cambiar nombre en estadísticas.",                           function: renameCommand },
   claimadmin:  { aliases: [],                    minRole: 0, desc: false,                                                       function: claimAdminCommand },
   lookup:      { aliases: ["buscar", "find"],    minRole: 0, desc: "Buscar estadísticas de un jugador. !lookup <nombre>",       function: lookupCommand },
-  register:    { aliases: ["vincular"],          minRole: 0, desc: "Obtener código para vincular tu cuenta con Discord.",       function: registerCommand },
+  register:    { aliases: ["vincular"],          minRole: 0, desc: "Obtener código para vincular tu cuenta con Discord.",      function: registerCommand },
+  chiste:      { aliases: ["joke"],              minRole: 0, desc: "Escuchar un chiste aleatorio.",                             function: chisteCommand },
+  memide:      { aliases: ["medir"],             minRole: 0, desc: "Descubre cuánto te mide (con humor).",                      function: memideCommand },
+  mua:         { aliases: ["beso"],              minRole: 0, desc: "Mándale un beso virtual a un jugador. !mua #ID",            function: muaCommand },
+  "8ball":     { aliases: ["bola8", "magic8"],   minRole: 0, desc: "Pregúntale a la bola mágica. !8ball <pregunta>",           function: eightBallCommand },
   // ── VIP ───────────────────────────────────────────────────────────────────
   jump:        { aliases: [],                    minRole: 1, desc: "Saltar al primer lugar de la fila (VIP+).",                 function: jumpCommand },
   // ── Mod ───────────────────────────────────────────────────────────────────
@@ -715,6 +893,9 @@ const commands = {
   unmute:      { aliases: [],                    minRole: 2, desc: "Desmutear jugador. !unmute #ID",                            function: unmuteCommand },
   mutelist:    { aliases: [],                    minRole: 2, desc: "Ver jugadores muteados.",                                   function: muteListCommand },
   slowmode:    { aliases: [],                    minRole: 2, desc: "Modo lento en segundos. !slowmode 3",                       function: slowmodeCommand },
+  strikeplayer:{ aliases: ["strike"],            minRole: 2, desc: "Añadir strike a un jugador. !strikeplayer #ID [motivo]",    function: strikePlayerCommand },
+  nostrikeplayer:{ aliases: ["nostrike"],        minRole: 2, desc: "Quitar strike a un jugador. !nostrikeplayer #ID",           function: nostrikePlayerCommand },
+  showstrikes: { aliases: ["strikes"],           minRole: 0, desc: "Ver todos los strikes activos.",                             function: showStrikesCommand },
   // ── Admin ─────────────────────────────────────────────────────────────────
   setvip:      { aliases: [],                    minRole: 3, desc: "Otorgar VIP. !setvip #ID",                                  function: setVipCommand },
   removevip:   { aliases: [],                    minRole: 3, desc: "Remover VIP. !removevip #ID",                               function: removeVipCommand },
