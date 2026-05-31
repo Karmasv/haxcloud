@@ -1,10 +1,6 @@
 'use strict';
 // =============================================================================
 //  worker.js — Punto de entrada de una sala aislada
-//
-//  Se ejecuta dentro de un Worker Thread.
-//  Cada Worker tiene su propio event loop, su propia memoria,
-//  y sus propias variables globales.
 // =============================================================================
 
 const { parentPort, workerData } = require('worker_threads');
@@ -14,7 +10,6 @@ const cfg = workerData;
 
 async function iniciar() {
   try {
-    // Cargar haxball.js parcheado (o el original si no existe el parche)
     let HaxballJS;
     try {
       HaxballJS = require('./lib/haxball-patched.cjs').default;
@@ -25,10 +20,8 @@ async function iniciar() {
     const HBInit = await HaxballJS();
     const ctx = crearSala(HBInit, cfg);
 
-    // Notificar al manager que la sala está lista
     parentPort.postMessage({ type: 'ready', id: cfg.id });
 
-    // Enviar métricas periódicas al manager (cada 30s)
     setInterval(() => {
       const mem = process.memoryUsage();
       parentPort.postMessage({
@@ -37,12 +30,24 @@ async function iniciar() {
         ram: Math.round(mem.heapUsed / 1024 / 1024),
         players: ctx.room?.getPlayerList().length ?? 0,
       });
-
-      // Forzar GC si está disponible (--expose-gc)
-      if (global.gc) {
-        global.gc();
-      }
+      if (global.gc) global.gc();
     }, 30000);
+
+    // Escuchar mensajes del manager
+    parentPort.on('message', (msg) => {
+      if (msg.type === 'confirmRegistration') {
+        const { auth, discord_id } = msg;
+        // Guardar vinculación en localStorage del worker
+        if (global.localStorage && global.getStats && global.saveStats) {
+          const stats = global.getStats(auth);
+          if (stats) {
+            stats.discord_id = discord_id;
+            global.saveStats(auth, stats);
+          }
+        }
+        console.log(`[${cfg.id}] ✅ Discord vinculado para auth ${auth}: ${discord_id}`);
+      }
+    });
 
   } catch (err) {
     parentPort.postMessage({ type: 'error', id: cfg.id, message: err.message });
