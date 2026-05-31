@@ -1,0 +1,22 @@
+{
+  "name": "liga-promeriga-returns",
+  "version": "2.0.0",
+  "description": "Sala pública multi-país de Liga Promeriga - Returns",
+  "main": "manager.js",
+  "scripts": {
+    "start":   "node manager.js",
+    "dev":     "PAISES=co node manager.js",
+    "co":      "PAISES=co node manager.js",
+    "cr":      "PAISES=cr node manager.js",
+    "us":      "PAISES=us node manager.js",
+    "br":      "PAISES=br node manager.js",
+    "x1":      "SALAS=co-x1,cr-x1,us-x1,br-x1 node manager.js",
+    "pm2":     "pm2 start manager.js --name liga-promeriga"
+  },
+  "dependencies": {
+    "haxball.js": "latest"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
