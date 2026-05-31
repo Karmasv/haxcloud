@@ -1,19 +1,17 @@
 // =============================================================================
-//  stats.js — Estadísticas, XP y rangos
+//  stats.js — Estadísticas, XP y rangos (ahora con SQLite)
 // =============================================================================
+
+const storage = require('./storage');
 
 const AUTH_KEY_LENGTH = 43;
 
 function getStats(auth) {
-  try {
-    const raw = localStorage.getItem(auth);
-    return raw ? JSON.parse(raw) : new HaxStatistics();
-  } catch { return new HaxStatistics(); }
+  return storage.getStats(auth);
 }
 
 function saveStats(auth, stats) {
-  try { localStorage.setItem(auth, JSON.stringify(stats)); }
-  catch (e) { console.error("Error guardando stats:", e); }
+  storage.saveStats(auth, stats);
 }
 
 function calculateScore(wins, losses, goals, assists, cs) {
@@ -21,26 +19,15 @@ function calculateScore(wins, losses, goals, assists, cs) {
 }
 
 function getPlayerScore(stats) {
-  return calculateScore(stats.wins, stats.losses, stats.goals, stats.assists, stats.CS);
+  return calculateScore(stats.wins, stats.losses, stats.goals, stats.assists, stats.cs);
 }
 
 function getAllPlayerStats() {
-  const result = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.length === AUTH_KEY_LENGTH) {
-      try { result.push(JSON.parse(localStorage.getItem(key))); } catch {}
-    }
-  }
-  return result;
+  return storage.getAllPlayerStats();
 }
 
+// ─── Sistema de XP y Rangos (sin cambios) ────────────────────────────────────
 
-// =============================================================================
-//  SECCIÓN 9B: SISTEMA DE XP Y RANGOS
-// =============================================================================
-
-// XP ganada/perdida por evento
 const XP = {
   victoria:   50,
   derrota:   -10,
@@ -50,7 +37,6 @@ const XP = {
   autogol:   -15,
 };
 
-// Rangos con XP mínima requerida
 const RANGOS = [
   { nombre: "🥉 Bronce I",    xpMin: 0,     xpMax: 200  },
   { nombre: "🥉 Bronce II",   xpMin: 200,   xpMax: 350  },
@@ -99,4 +85,3 @@ function updateXP(auth, xpGanada) {
   saveStats(auth, stats);
   return { xpAntes, xpDespues, xpGanada, rangoAntes, rangoDespues, subioRango: rangoDespues.index > rangoAntes.index };
 }
-
