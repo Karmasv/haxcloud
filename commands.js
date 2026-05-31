@@ -1,5 +1,5 @@
 // =============================================================================
-//  commands.js — Todos los comandos de la sala 
+//  commands.js — Todos los comandos de la sala (con !register y !lookup)
 // =============================================================================
 
 function announce(text, playerId, color, style, sound) {
@@ -48,7 +48,6 @@ function printRankings(stat, playerId = null) {
   }
 
   const icons  = { elo: "💎", goals: "⚽", assists: "⭐", wins: "🏆", losses: "😵", cs: "🧤", playtime: "⏱️" };
-  const icon   = icons[stat] ?? "💐";
   const header = t.top_header();
   const footer = t.top_footer();
   const colors = [0x52b788, 0x40916c, 0x2d6a4f, 0x1b4332, 0x081c15];
@@ -536,10 +535,9 @@ function xpCommand(player) {
   );
 }
 
-// --- NUEVO: Comando Anti-VPN ---
 function antiVPNCommand(player, message) {
   const args = message.split(/ +/).slice(1);
-  const allowed = getRole(player) >= 3; // Admin+
+  const allowed = getRole(player) >= 3;
 
   if (!allowed) {
     announce(t.cmd_no_perm(), player.id, 0xed5050, "bold", 1);
@@ -558,7 +556,6 @@ function antiVPNCommand(player, message) {
   announceAll(`🛡️ Filtro Anti-VPN: ${estado}`, color, "bold", 1);
 }
 
-// --- NUEVO: Comando !lookup ---
 function lookupCommand(player, message) {
   const args = message.split(/ +/).slice(1);
   if (args.length === 0) {
@@ -570,7 +567,6 @@ function lookupCommand(player, message) {
   let foundPlayer = null;
   let isOnline = false;
 
-  // 1. Buscar en jugadores conectados
   const allPlayers = room.getPlayerList();
   for (const p of allPlayers) {
     if (p.name.toLowerCase().includes(searchName)) {
@@ -580,7 +576,6 @@ function lookupCommand(player, message) {
     }
   }
 
-  // 2. Si no está online, buscar en localStorage (stats guardadas)
   if (!foundPlayer) {
     const allStats = getAllPlayerStats();
     const match = allStats.find(s => s.playerName.toLowerCase().includes(searchName));
@@ -595,14 +590,10 @@ function lookupCommand(player, message) {
     return;
   }
 
-  // Construir mensaje de respuesta
   let msg = `🔍 **Lookup: ${foundPlayer.name}**\n`;
   msg += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-
-  // Auth
   msg += `🔒 Auth: \`${getAuth(foundPlayer) || 'N/A'}\`\n`;
 
-  // IP (solo si está online)
   if (isOnline) {
     const conn = getConn(foundPlayer);
     const ip = conn ? hexToIP(conn) : 'N/A';
@@ -612,7 +603,6 @@ function lookupCommand(player, message) {
     msg += `🌐 IP: Desconectado\n`;
   }
 
-  // Estadísticas
   const auth = getAuth(foundPlayer) || foundPlayer.auth;
   if (auth && auth !== 'N/A') {
     const stats = getStats(auth);
@@ -642,6 +632,45 @@ function lookupCommand(player, message) {
   }
 
   announce(msg, player.id, 0x2d6a4f, "bold", 0);
+}
+
+// --- NUEVO: Comando !register (vinculación con Discord) ---
+function registerCommand(player) {
+  const auth = getAuth(player);
+  if (!auth) {
+    announce('❌ No se pudo obtener tu auth. Inténtalo de nuevo.', player.id, 0xed5050, "bold", 1);
+    return;
+  }
+
+  const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+  // Enviar código al manager a través del worker
+  if (typeof parentPort !== 'undefined' && parentPort) {
+    parentPort.postMessage({
+      type: 'registerCode',
+      code,
+      auth,
+      workerId: CONFIG.room?.name || 'unknown',
+    });
+  } else {
+    // Si no hay parentPort (modo standalone sin workers), mostrar solo el código
+    announce(
+      `ℹ️ Modo standalone: El código es **${code}**\n` +
+      `En el futuro, esto se validará automáticamente.`,
+      player.id, 0xffa135, "bold", 1
+    );
+    return;
+  }
+
+  announce(
+    `🔐 **Vinculación con Discord**\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `Tu código único es: **${code}**\n\n` +
+    `Ve a nuestro Discord y usa el comando:\n` +
+    `**/vincular ${code}**\n\n` +
+    `Este código expirará en 5 minutos.`,
+    player.id, 0x2d6a4f, "bold", 1
+  );
 }
 
 function getCommand(name) {
@@ -678,6 +707,7 @@ const commands = {
   rename:      { aliases: [],                    minRole: 0, desc: "Cambiar nombre en estadísticas.",                           function: renameCommand },
   claimadmin:  { aliases: [],                    minRole: 0, desc: false,                                                       function: claimAdminCommand },
   lookup:      { aliases: ["buscar", "find"],    minRole: 0, desc: "Buscar estadísticas de un jugador. !lookup <nombre>",       function: lookupCommand },
+  register:    { aliases: ["vincular"],          minRole: 0, desc: "Obtener código para vincular tu cuenta con Discord.",       function: registerCommand },
   // ── VIP ───────────────────────────────────────────────────────────────────
   jump:        { aliases: [],                    minRole: 1, desc: "Saltar al primer lugar de la fila (VIP+).",                 function: jumpCommand },
   // ── Mod ───────────────────────────────────────────────────────────────────
