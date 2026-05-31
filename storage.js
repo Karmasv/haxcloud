@@ -1,6 +1,6 @@
 'use strict';
 // =============================================================================
-//  storage.js — Base de datos SQLite (reemplaza localStorage)
+//  storage.js — Base de datos SQLite (con tienda)
 // =============================================================================
 
 const Database = require('better-sqlite3');
@@ -53,6 +53,8 @@ function createTables() {
       item_type TEXT NOT NULL,
       item_value TEXT NOT NULL,
       equipped INTEGER NOT NULL DEFAULT 0,
+      expires_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (auth) REFERENCES players(auth) ON DELETE CASCADE
     );
 
@@ -75,7 +77,6 @@ function getPlayer(auth) {
 function createPlayer(auth, name) {
   const d = getDB();
   d.prepare('INSERT OR IGNORE INTO players (auth, name) VALUES (?, ?)').run(auth, name);
-  // Actualizar nombre si ya existía
   d.prepare('UPDATE players SET name = ? WHERE auth = ? AND name = \'Unknown\'').run(name, auth);
   return getPlayer(auth);
 }
@@ -174,16 +175,22 @@ function getLastIP(auth) {
   return row ? row.ip : null;
 }
 
-// ─── Funciones de inventario ─────────────────────────────────────────────────
+// ─── Funciones de tienda e inventario ────────────────────────────────────────
 
-function getInventory(auth) {
-  const d = getDB();
-  return d.prepare('SELECT * FROM inventory WHERE auth = ?').all(auth);
+const SHOP_ITEMS = [
+  { type: 'vcolor', name: 'Color de nombre', price: 50, desc: 'Cambia el color de tu nombre en el chat por 30 días.' },
+  { type: 'prefijo', name: 'Prefijo personalizado', price: 75, desc: 'Añade un prefijo antes de tu nombre (máx. 10 caracteres).' },
+  { type: 'vipavatar', name: 'Avatar VIP', price: 100, desc: 'Recibe un avatar aleatorio especial durante 24 horas.' },
+];
+
+function getShopItems() {
+  return SHOP_ITEMS;
 }
 
 function addItem(auth, itemType, itemValue) {
   const d = getDB();
-  d.prepare('INSERT INTO inventory (auth, item_type, item_value) VALUES (?, ?, ?)').run(auth, itemType, itemValue);
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  d.prepare('INSERT INTO inventory (auth, item_type, item_value, expires_at) VALUES (?, ?, ?, ?)').run(auth, itemType, itemValue, expiresAt);
 }
 
 function equipItem(auth, itemType, itemValue) {
@@ -205,6 +212,26 @@ function getEquipped(auth, itemType) {
   return row ? row.item_value : null;
 }
 
+function getInventory(auth) {
+  const d = getDB();
+  return d.prepare('SELECT * FROM inventory WHERE auth = ?').all(auth);
+}
+
+function getPlayerItem(auth, itemType) {
+  const d = getDB();
+  return d.prepare('SELECT * FROM inventory WHERE auth = ? AND item_type = ? AND equipped = 1').get(auth, itemType) || null;
+}
+
+function removeItem(itemId) {
+  const d = getDB();
+  d.prepare('DELETE FROM inventory WHERE id = ?').run(itemId);
+}
+
+function getExpiredItems() {
+  const d = getDB();
+  return d.prepare("SELECT * FROM inventory WHERE expires_at IS NOT NULL AND datetime(expires_at) < datetime('now')").all();
+}
+
 module.exports = {
   getDB,
   getPlayer,
@@ -221,9 +248,13 @@ module.exports = {
   getAllPlayerStats,
   logIP,
   getLastIP,
-  getInventory,
+  getShopItems,
   addItem,
   equipItem,
   unequipItem,
   getEquipped,
+  getInventory,
+  getPlayerItem,
+  removeItem,
+  getExpiredItems,
 };
