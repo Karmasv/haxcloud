@@ -1,5 +1,5 @@
 // =============================================================================
-//  events.js — Event handlers de HaxBall (Power Bar + Anti-VPN)
+//  events.js — Event handlers de HaxBall (Power Bar + Anti-VPN + Tienda)
 // =============================================================================
 
 room.onPlayerJoin = function(player) {
@@ -151,7 +151,7 @@ room.onPlayerChat = function(player, message) {
   // Muteado — bloquear mensaje
   if (muteArray.getByPlayerId(player.id)) return false;
 
-  // Webhook chat-sala (todo el chat público)
+  // Webhook chat-sala
   webhookChat(player, message);
 
   const words = message.split(/ +/);
