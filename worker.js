@@ -1,6 +1,6 @@
 'use strict';
 // =============================================================================
-//  worker.js — Punto de entrada de una sala aislada
+//  worker.js — Punto de entrada de una sala aislada (con SQLite)
 // =============================================================================
 
 const { parentPort, workerData } = require('worker_threads');
@@ -10,6 +10,7 @@ const cfg = workerData;
 
 async function iniciar() {
   try {
+    // Cargar haxball.js parcheado
     let HaxballJS;
     try {
       HaxballJS = require('./lib/haxball-patched.cjs').default;
@@ -33,19 +34,14 @@ async function iniciar() {
       if (global.gc) global.gc();
     }, 30000);
 
-    // Escuchar mensajes del manager
+    // Escuchar mensajes del manager (registro Discord)
     parentPort.on('message', (msg) => {
       if (msg.type === 'confirmRegistration') {
         const { auth, discord_id } = msg;
-        // Guardar vinculación en localStorage del worker
-        if (global.localStorage && global.getStats && global.saveStats) {
-          const stats = global.getStats(auth);
-          if (stats) {
-            stats.discord_id = discord_id;
-            global.saveStats(auth, stats);
-          }
-        }
-        console.log(`[${cfg.id}] ✅ Discord vinculado para auth ${auth}: ${discord_id}`);
+        const storage = require('./storage');
+        storage.createPlayer(auth, 'Unknown');
+        storage.setDiscordID(auth, discord_id);
+        console.log(`[${cfg.id}] Discord vinculado: ${discord_id}`);
       }
     });
 
