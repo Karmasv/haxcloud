@@ -76,5 +76,8 @@ const voteKickData = {
 
 const emptyPlayer = { id: 0 };
 
-// --- NUEVO: Filtro Anti-VPN ---
+// Filtro Anti-VPN (activado/desactivado)
 let antiVPNEnabled = false;
+
+// Sistema de Strikes (jugador ID → número de strikes)
+const playerStrikes = new Map();
