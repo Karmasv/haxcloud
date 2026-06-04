@@ -1,10 +1,11 @@
 'use strict';
 // =============================================================================
-//  storage.js — Base de datos SQLite (con tienda)
+//  storage.js — Base de datos SQLite (con sistema VIP)
 // =============================================================================
 
 const Database = require('better-sqlite3');
 const path = require('path');
+const crypto = require('crypto');
 
 const DB_PATH = path.join(__dirname, 'haxcloud.db');
 
@@ -64,6 +65,13 @@ function createTables() {
       last_seen TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (auth, ip)
     );
+
+    CREATE TABLE IF NOT EXISTS vip_claims (
+      discord_id TEXT PRIMARY KEY,
+      auth TEXT NOT NULL,
+      claimed_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (auth) REFERENCES players(auth) ON DELETE CASCADE
+    );
   `);
 }
 
@@ -79,6 +87,11 @@ function createPlayer(auth, name) {
   d.prepare('INSERT OR IGNORE INTO players (auth, name) VALUES (?, ?)').run(auth, name);
   d.prepare('UPDATE players SET name = ? WHERE auth = ? AND name = \'Unknown\'').run(name, auth);
   return getPlayer(auth);
+}
+
+function getPlayerByDiscord(discordId) {
+  const d = getDB();
+  return d.prepare('SELECT * FROM players WHERE discord_id = ?').get(discordId) || null;
 }
 
 function getCoins(auth) {
@@ -232,10 +245,45 @@ function getExpiredItems() {
   return d.prepare("SELECT * FROM inventory WHERE expires_at IS NOT NULL AND datetime(expires_at) < datetime('now')").all();
 }
 
+// ─── Sistema VIP ─────────────────────────────────────────────────────────────
+
+function claimVip(discordId) {
+  const d = getDB();
+  const player = getPlayerByDiscord(discordId);
+  if (!player) return { success: false, reason: 'not_linked' };
+  const auth = player.auth;
+  const existing = d.prepare('SELECT * FROM vip_claims WHERE discord_id = ?').get(discordId);
+  if (existing) return { success: false, reason: 'already_claimed', auth };
+  d.prepare('INSERT INTO vip_claims (discord_id, auth) VALUES (?, ?)').run(discordId, auth);
+  return { success: true, auth };
+}
+
+function checkVipClaim(discordId) {
+  const d = getDB();
+  const row = d.prepare('SELECT * FROM vip_claims WHERE discord_id = ?').get(discordId);
+  return row ? true : false;
+}
+
+function transferAuth(discordId, newAuth) {
+  const d = getDB();
+  const player = getPlayerByDiscord(discordId);
+  if (!player) return false;
+  const oldAuth = player.auth;
+  d.transaction(() => {
+    d.prepare('UPDATE players SET auth = ? WHERE discord_id = ?').run(newAuth, discordId);
+    d.prepare('UPDATE stats SET auth = ? WHERE auth = ?').run(newAuth, oldAuth);
+    d.prepare('UPDATE vip_claims SET auth = ? WHERE discord_id = ?').run(newAuth, discordId);
+    d.prepare('UPDATE inventory SET auth = ? WHERE auth = ?').run(newAuth, oldAuth);
+    d.prepare('UPDATE player_ips SET auth = ? WHERE auth = ?').run(newAuth, oldAuth);
+  })();
+  return true;
+}
+
 module.exports = {
   getDB,
   getPlayer,
   createPlayer,
+  getPlayerByDiscord,
   getCoins,
   addCoins,
   removeCoins,
@@ -257,4 +305,7 @@ module.exports = {
   getPlayerItem,
   removeItem,
   getExpiredItems,
+  claimVip,
+  checkVipClaim,
+  transferAuth,
 };
