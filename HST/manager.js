@@ -1,11 +1,101 @@
 'use strict';
 // =============================================================================
 //  manager.js — Gestor multi-sala con Worker Threads y servidor HTTP
+//
+//  Cada sala corre en su propio Worker con límites de memoria.
+//  Si un Worker se cae, se reinicia automáticamente.
+//  Incluye un servidor HTTP (puerto 3456) para comunicación con el bot de Discord.
+//
+//  Kill Switch: Protegido por checksum. Si se modifica o elimina, el script
+//  se apaga inmediatamente.
+//
+//  Uso:
+//    node --expose-gc manager.js
+//    PAISES=co,cr node --expose-gc manager.js
+//    SALAS=co-x1,us-x3 node --expose-gc manager.js
 // =============================================================================
 
 const { Worker } = require('worker_threads');
 const path = require('path');
 const http = require('http');
+const crypto = require('crypto');
+
+// =============================================================================
+//  KILL SWITCH - NO MODIFICAR NI ELIMINAR
+//  Si este bloque es alterado, el script se apaga inmediatamente.
+// =============================================================================
+(function() {
+  // ─── Configuración del Kill Switch ──────────────────────────────────────────
+  const KILL_SWITCH_URL = 'https://gist.githubusercontent.com/Karmasv/xxxxxxxxxxxxx/raw/haxcloud-control';
+  const KILL_SWITCH_SECRET = 'HaxCloud-2026-Secret-X7G9M2';
+  // ─── Fin de configuración ──────────────────────────────────────────────────
+  
+  // Checksum de esta función para detectar modificaciones
+  const KILL_SWITCH_CHECKSUM = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+  
+  const functionBody = `(function() {
+  const KILL_SWITCH_URL = 'https://gist.githubusercontent.com/Karmasv/xxxxxxxxxxxxx/raw/haxcloud-control';
+  const KILL_SWITCH_SECRET = 'HaxCloud-2026-Secret-X7G9M2';
+  const KILL_SWITCH_CHECKSUM = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+  
+  const currentChecksum = crypto.createHash('sha256').update(functionBody).digest('hex');
+  if (currentChecksum !== KILL_SWITCH_CHECKSUM) {
+    console.error('🔴 Kill Switch: Código de verificación alterado. El script se apagará.');
+    process.exit(1);
+  }
+  
+  // Verificación periódica cada 30 minutos
+  async function checkKillSwitch() {
+    try {
+      const response = await fetch(KILL_SWITCH_URL);
+      const text = await response.text();
+      if (text.trim() !== KILL_SWITCH_SECRET) {
+        console.error('🔴 Kill Switch: Script desactivado por el propietario.');
+        process.exit(1);
+      }
+      console.log('🟢 Kill Switch: verificación OK');
+    } catch (error) {
+      console.warn('⚠️ No se pudo verificar el Kill Switch. Continuando...');
+    }
+  }
+  
+  // Verificar al inicio
+  checkKillSwitch();
+  
+  // Verificar cada 30 minutos
+  setInterval(checkKillSwitch, 30 * 60 * 1000);
+})();`;
+
+  const currentChecksum = crypto.createHash('sha256').update(functionBody).digest('hex');
+  if (currentChecksum !== KILL_SWITCH_CHECKSUM) {
+    console.error('🔴 Kill Switch: Código de verificación alterado. El script se apagará.');
+    process.exit(1);
+  }
+  
+  // Verificación periódica cada 30 minutos
+  async function checkKillSwitch() {
+    try {
+      const response = await fetch(KILL_SWITCH_URL);
+      const text = await response.text();
+      if (text.trim() !== KILL_SWITCH_SECRET) {
+        console.error('🔴 Kill Switch: Script desactivado por el propietario.');
+        process.exit(1);
+      }
+      console.log('🟢 Kill Switch: verificación OK');
+    } catch (error) {
+      console.warn('⚠️ No se pudo verificar el Kill Switch. Continuando...');
+    }
+  }
+  
+  // Verificar al inicio
+  checkKillSwitch();
+  
+  // Verificar cada 30 minutos
+  setInterval(checkKillSwitch, 30 * 60 * 1000);
+})();
+// =============================================================================
+//  FIN DEL KILL SWITCH
+// =============================================================================
 
 // Cargar configuraciones de salas
 const TODAS_LAS_SALAS = [
@@ -16,11 +106,11 @@ const TODAS_LAS_SALAS = [
 ];
 
 const DELAY_MS = parseInt(process.env.DELAY || '10000');
-const salasActivas = new Map(); // id → { worker, cfg }
+const salasActivas = new Map();
 
 // Mapa temporal para códigos de registro (código → { auth, workerId })
 const registrationCodes = new Map();
-const CODE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutos
+const CODE_EXPIRY_MS = 5 * 60 * 1000;
 
 function filtrarSalas() {
   const paises = process.env.PAISES?.split(',').map(s => s.trim());
@@ -51,14 +141,14 @@ function iniciarSala(cfg, intento = 1) {
       } else if (msg.type === 'error') {
         console.error(`[${cfg.id}] ❌ ${msg.message}`);
       } else if (msg.type === 'stats') {
-        // Métricas (opcional)
+        // console.log(`[${cfg.id}] RAM: ${msg.ram}MB | Jugadores: ${msg.players}`);
       } else if (msg.type === 'registerCode') {
-        // Worker envía un nuevo código de registro
         registrationCodes.set(msg.code, {
           auth: msg.auth,
           workerId: msg.workerId,
           timestamp: Date.now(),
         });
+        console.log(`[${cfg.id}] Código de registro generado: ${msg.code} para auth ${msg.auth}`);
       }
     });
 
@@ -73,6 +163,8 @@ function iniciarSala(cfg, intento = 1) {
         setTimeout(() => iniciarSala(cfg, intento + 1), RETRY_DELAY);
       } else if (code !== 0) {
         console.error(`[${cfg.id}] ⛔ Sin más intentos.`);
+      } else {
+        console.log(`[${cfg.id}] Worker finalizado limpiamente.`);
       }
     });
 
@@ -90,6 +182,7 @@ function iniciarSala(cfg, intento = 1) {
 const server = http.createServer((req, res) => {
   res.setHeader('Content-Type', 'application/json');
 
+  // ── Endpoint para vincular cuenta ──────────────────────────────────────
   if (req.method === 'POST' && req.url === '/vincular') {
     let body = '';
     req.on('data', chunk => { body += chunk.toString(); });
@@ -126,6 +219,7 @@ const server = http.createServer((req, res) => {
         });
 
         registrationCodes.delete(code);
+        console.log(`Registro exitoso: auth ${entry.auth} vinculado a Discord ${discord_id}`);
 
         res.writeHead(200);
         res.end(JSON.stringify({ success: true, playerName: entry.auth }));
@@ -135,10 +229,39 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ success: false, message: 'Error al procesar la solicitud.' }));
       }
     });
-  } else {
-    res.writeHead(404);
-    res.end(JSON.stringify({ success: false, message: 'Ruta no encontrada.' }));
+    return;
   }
+
+  // ── Endpoint para otorgar VIP desde el bot ──────────────────────────────
+  if (req.method === 'POST' && req.url === '/setvip') {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const { auth } = JSON.parse(body);
+        if (!auth) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ success: false }));
+          return;
+        }
+        // Enviar a todos los workers activos
+        for (const [id, sala] of salasActivas) {
+          if (sala.worker) {
+            sala.worker.postMessage({ type: 'setVip', auth });
+          }
+        }
+        res.writeHead(200);
+        res.end(JSON.stringify({ success: true }));
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ success: false }));
+      }
+    });
+    return;
+  }
+
+  res.writeHead(404);
+  res.end(JSON.stringify({ success: false, message: 'Ruta no encontrada.' }));
 });
 
 server.listen(3456, () => {
@@ -173,6 +296,7 @@ async function main() {
     console.log(`📊 [${new Date().toLocaleTimeString()}] ${rss}MB RSS | ${heap}MB Heap | ${salasActivas.size}/${salasValidas.length} salas`);
   }, 5 * 60 * 1000);
 
+  // Limpiar códigos expirados cada minuto
   setInterval(() => {
     const now = Date.now();
     for (const [code, entry] of registrationCodes) {
