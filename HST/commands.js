@@ -1,5 +1,5 @@
 // =============================================================================
-//  commands.js — Todos los comandos de la sala (con economía y tienda)
+//  commands.js — Todos los comandos de la sala (con economía, tienda, VIP)
 // =============================================================================
 
 function announce(text, playerId, color, style, sound) {
@@ -161,7 +161,6 @@ function showStatsCommand(player) {
 
 function resetStatsCommand(player) {
   const auth = getAuth(player);
-  // En SQLite no borramos, solo reiniciamos
   const stats = getStats(auth);
   stats.games = 0; stats.wins = 0; stats.losses = 0;
   stats.goals = 0; stats.assists = 0; stats.cs = 0;
@@ -1057,6 +1056,16 @@ function showStrikesCommand(player) {
   announce(msg, player.id, 0xffa500, "bold", 1);
 }
 
+// --- Mostrar auth del jugador ---
+function myauthCommand(player) {
+  const auth = getAuth(player);
+  if (!auth) {
+    announce('❌ No se pudo obtener tu auth.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+  announce(`🔑 Tu auth es: \`${auth}\``, player.id, 0x00ff00, 'bold', 1);
+}
+
 function getCommand(name) {
   if (commands[name]) return name;
   for (const [key, cmd] of Object.entries(commands)) {
@@ -1102,6 +1111,7 @@ const commands = {
   tienda:      { aliases: ["shop"],              minRole: 0, desc: "Ver la tienda de items.",                                  function: tiendaCommand },
   comprar:     { aliases: ["buy"],               minRole: 0, desc: "Comprar un item de la tienda. !comprar <tipo> [valor]",    function: comprarCommand },
   inventario:  { aliases: ["inventory", "mochila"], minRole: 0, desc: "Ver tu inventario de items comprados.",                  function: inventarioCommand },
+  myauth:      { aliases: ["auth"],              minRole: 0, desc: "Mostrar tu auth de HaxBall para transferirlo.",           function: myauthCommand },
   // ── VIP ───────────────────────────────────────────────────────────────────
   jump:        { aliases: [],                    minRole: 1, desc: "Saltar al primer lugar de la fila (VIP+).",                 function: jumpCommand },
   // ── Mod ───────────────────────────────────────────────────────────────────
