@@ -1,5 +1,5 @@
 // =============================================================================
-//  commands.js — Todos los comandos de la sala (con economía, tienda, VIP)
+//  commands.js — Todos los comandos de la sala (con economía, tienda, VIP, uniformes)
 // =============================================================================
 
 function announce(text, playerId, color, style, sound) {
@@ -1066,6 +1066,74 @@ function myauthCommand(player) {
   announce(`🔑 Tu auth es: \`${auth}\``, player.id, 0x00ff00, 'bold', 1);
 }
 
+// --- Uniformes ---
+const uniformList = require('./uniforms');
+
+function colorsAreSimilar(color1, color2, threshold = 30) {
+  const r1 = (color1 >> 16) & 0xff;
+  const g1 = (color1 >> 8) & 0xff;
+  const b1 = color1 & 0xff;
+  const r2 = (color2 >> 16) & 0xff;
+  const g2 = (color2 >> 8) & 0xff;
+  const b2 = color2 & 0xff;
+  
+  const diff = Math.sqrt((r1-r2)**2 + (g1-g2)**2 + (b1-b2)**2);
+  return diff < threshold;
+}
+
+function unisCommand(player, message) {
+  const role = getRole(player);
+  const isCaptain = (player.id === captains?.red) || (player.id === captains?.blue);
+  if (role < 1 && !isCaptain) {
+    announce('❌ Solo los capitanes o VIP+ pueden cambiar el uniforme.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  if (uniformLocked) {
+    announce('🔒 Los uniformes están bloqueados durante el partido.', player.id, 0xffa500, 'bold', 1);
+    return;
+  }
+
+  const args = message.split(/ +/).slice(1);
+  
+  if (args.length === 0 || args[0].toLowerCase() === 'lista') {
+    let list = '🎨 **Uniformes disponibles:**\n━━━━━━━━━━━━━━━━━━━━━━\n';
+    uniformList.forEach((u, i) => {
+      list += `${i+1}. ${u.name}\n`;
+    });
+    list += '\n💡 Usa !unis <nombre> para elegir.';
+    announce(list, player.id, 0xffd700, 'bold', 1);
+    return;
+  }
+
+  const searchName = args.join(' ').toLowerCase();
+  const found = uniformList.find(u => u.name.toLowerCase().includes(searchName));
+  
+  if (!found) {
+    announce('❌ Uniforme no encontrado. Usa !unis lista para verlos.', player.id, 0xed5050, 'bold', 1);
+    return;
+  }
+
+  const otherTeam = player.team === 1 ? 2 : 1;
+  const otherUniform = otherTeam === 1 ? currentUniform.red : currentUniform.blue;
+  const newColors = player.team === 1 ? found.red.colors : found.blue.colors;
+  
+  for (const newColor of newColors) {
+    for (const existingColor of otherUniform.colors) {
+      if (colorsAreSimilar(newColor, existingColor)) {
+        announce('❌ Este uniforme es muy similar al del otro equipo. Elige otro.', player.id, 0xed5050, 'bold', 1);
+        return;
+      }
+    }
+  }
+
+  currentUniform = { red: found.red, blue: found.blue };
+  room.setTeamColors(1, found.red.angle, found.red.textColor, found.red.colors);
+  room.setTeamColors(2, found.blue.angle, found.blue.textColor, found.blue.colors);
+  
+  announceAll(`🎨 ${player.name} eligió el uniforme **${found.name}**`, 0xffd700, 'bold', 1);
+}
+
 function getCommand(name) {
   if (commands[name]) return name;
   for (const [key, cmd] of Object.entries(commands)) {
@@ -1114,6 +1182,7 @@ const commands = {
   myauth:      { aliases: ["auth"],              minRole: 0, desc: "Mostrar tu auth de HaxBall para transferirlo.",           function: myauthCommand },
   // ── VIP ───────────────────────────────────────────────────────────────────
   jump:        { aliases: [],                    minRole: 1, desc: "Saltar al primer lugar de la fila (VIP+).",                 function: jumpCommand },
+  unis:        { aliases: ["uniforme", "kit"],   minRole: 0, desc: "Cambiar uniforme (capitanes o VIP). !unis <nombre>",       function: unisCommand },
   // ── Mod ───────────────────────────────────────────────────────────────────
   mute:        { aliases: [],                    minRole: 2, desc: "Mutear jugador. !mute #ID [min]",                           function: muteCommand },
   unmute:      { aliases: [],                    minRole: 2, desc: "Desmutear jugador. !unmute #ID",                            function: unmuteCommand },
