@@ -1,5 +1,5 @@
 // =============================================================================
-//  events.js — Event handlers de HaxBall (Power Bar + Anti-VPN + Tienda)
+//  events.js — Event handlers de HaxBall (Power Bar + Anti-VPN + Tienda + Uniformes)
 // =============================================================================
 
 room.onPlayerJoin = function(player) {
@@ -257,6 +257,13 @@ room.onGameStart = function(player) {
   teamBlueStats      = teamBlue.slice();
   gameState          = 0;
   announceWinProbability();
+
+  // Aplicar uniforme actual
+  room.setTeamColors(1, currentUniform.red.angle, currentUniform.red.textColor, currentUniform.red.colors);
+  room.setTeamColors(2, currentUniform.blue.angle, currentUniform.blue.textColor, currentUniform.blue.colors);
+  
+  // Bloquear cambios de uniforme durante el partido
+  uniformLocked = true;
 };
 
 room.onGameStop = function(player) {
@@ -282,6 +289,9 @@ room.onGameStop = function(player) {
   updateTeams();
   handlePlayersStop(player);
   handleActivityStop();
+
+  // Desbloquear uniformes al terminar el partido
+  uniformLocked = false;
 };
 
 room.onGamePause = function(player) {
@@ -384,6 +394,22 @@ function handleAdvancedInput() {
     if (!players.some(p => p.id === id)) powerChargeMap.delete(id);
   }
 }
+
+// =============================================================================
+//  Anuncio periódico — _uknw. + HaxCloud + Fly
+// =============================================================================
+setInterval(() => {
+  announceAll(
+    '💻 Sala desarrollada por _uknw. | HaxCloud Development Team',
+    0x9b59b6, 'bold', 0
+  );
+  announceAll(
+    `🌐 HaxCloud: ${CONFIG.discord}`, 0x2d6a4f, 'bold', 0
+  );
+  announceAll(
+    `📋 Regístrate en Fly: ${CONFIG.discord_registro}`, 0x52b788, 'bold', 0
+  );
+}, 10 * 60 * 1000);
 
 // =============================================================================
 //  ARRANQUE INICIAL
