@@ -1,6 +1,6 @@
 'use strict';
 // =============================================================================
-//  uniforms.js — Uniformes de selecciones y clubes (SIN CONFLICTOS)
+//  uniforms.js — Uniformes de selecciones y clubes 
 // =============================================================================
 
 module.exports = [
