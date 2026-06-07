@@ -1069,7 +1069,10 @@ function myauthCommand(player) {
 // --- Uniformes ---
 const uniformList = require('./uniforms');
 
-function colorsAreSimilar(color1, color2, threshold = 30) {
+function colorsAreSimilar(color1, color2, threshold = 50) {
+  if (color1 === 0 || color1 === 16777215) return false;
+  if (color2 === 0 || color2 === 16777215) return false;
+
   const r1 = (color1 >> 16) & 0xff;
   const g1 = (color1 >> 8) & 0xff;
   const b1 = color1 & 0xff;
@@ -1114,6 +1117,7 @@ function unisCommand(player, message) {
     return;
   }
 
+  // Verificar que no sea similar al uniforme del otro equipo
   const otherTeam = player.team === 1 ? 2 : 1;
   const otherUniform = otherTeam === 1 ? currentUniform.red : currentUniform.blue;
   const newColors = player.team === 1 ? found.red.colors : found.blue.colors;
